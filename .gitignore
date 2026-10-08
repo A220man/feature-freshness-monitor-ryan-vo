@@ -1,0 +1,14 @@
+.env
+.venv/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tsbuildinfo
+*.sqlite*
+*.db
+coverage/
+*.log
+.portfolio-*.json
+frontend/tests/react-app.js

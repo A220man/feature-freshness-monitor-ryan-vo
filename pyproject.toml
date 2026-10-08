@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "feature-freshness-monitor-ryan-vo"
+version = "1.0.0"
+description = "Source-watermark freshness monitoring for ML feature pipelines"
+requires-python = ">=3.12"
+authors = [{name = "Ryan Vo", email = "ryandtvo@gmail.com"}]
+license = "MIT"
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["app*"]
