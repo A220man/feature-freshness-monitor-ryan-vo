@@ -9,6 +9,8 @@ export interface Transition { incident_id: string; action: 'opened' | 'resolved'
 export interface TimelineEvent { sequence: number; incident_id: string; action: 'opened' | 'resolved'; occurred_at: string; feature_set: string; partition_name: string; condition: 'missing' | 'stale' }
 export interface AuditEvent { sequence: number; actor: string; action: string; feature_set: string; occurred_at: string; detail_json: string }
 export interface Page<T> { events: T[]; next_cursor: number }
+export interface BatchResult { total: number; created: number; replayed: number; event_ids: string[] }
+export interface FeatureExport { feature_set: string; exported_at: string; policy: Policy; health: Evaluation; incidents: Incident[] }
 
 export class ApiError extends Error {
   status: number
@@ -50,6 +52,12 @@ export class FeatureApi {
   }
   ingest(feature: string, event: MaterializationInput): Promise<{ event_id: string; created: boolean }> {
     return this.request(`/features/${encodeURIComponent(feature)}/materializations`, 'POST', event)
+  }
+  batchIngest(feature: string, events: MaterializationInput[]): Promise<BatchResult> {
+    return this.request(`/features/${encodeURIComponent(feature)}/materializations/batch`, 'POST', events)
+  }
+  export(feature: string): Promise<FeatureExport> {
+    return this.request(`/features/${encodeURIComponent(feature)}/export`)
   }
   health(feature: string): Promise<Evaluation> { return this.request(`/features/${encodeURIComponent(feature)}/health`) }
   evaluate(feature: string): Promise<{ evaluation: Evaluation; incidents: Incident[]; transitions: Transition[] }> {

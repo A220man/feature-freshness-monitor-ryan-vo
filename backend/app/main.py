@@ -35,6 +35,26 @@ class Settings:
                    Path(os.environ.get("DATABASE_PATH", "data/freshness.sqlite")), os.environ.get("FRONTEND_ORIGIN", ""), llm)
 
 
+def get_version() -> str:
+    for candidate in (
+        Path(__file__).resolve().parents[2] / "VERSION",
+        Path("VERSION"),
+    ):
+        if candidate.is_file():
+            try:
+                content = candidate.read_text(encoding="utf-8").strip()
+                if content:
+                    return content
+            except Exception:
+                pass
+    try:
+        from importlib.metadata import version
+        return version("feature-freshness-monitor-ryan-vo")
+    except Exception:
+        pass
+    return "1.0.0"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
     settings.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,7 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.initialize()
         yield
 
-    app = FastAPI(title="Feature Freshness Monitor", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="Feature Freshness Monitor", version=get_version(), lifespan=lifespan)
     if settings.frontend_origin:
         app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_origin], allow_credentials=False,
                            allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type"])
