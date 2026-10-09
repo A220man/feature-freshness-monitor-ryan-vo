@@ -143,6 +143,13 @@ class FreshnessStore:
         with self.connection() as conn:
             return [{**asdict(self._policy(row)), "version": row["version"], "updated_at": row["updated_at"], "last_evaluated_at": row["last_evaluated_at"]} for row in conn.execute("SELECT * FROM feature_policies ORDER BY feature_set")]
 
+    def policy_by_name(self, feature_set: str) -> dict:
+        with self.connection() as conn:
+            row = conn.execute("SELECT * FROM feature_policies WHERE feature_set=?", (feature_set,)).fetchone()
+            if row is None:
+                raise NotFoundError("feature policy not found")
+            return {**asdict(self._policy(row)), "version": row["version"], "updated_at": row["updated_at"], "last_evaluated_at": row["last_evaluated_at"]}
+
     def record_materialization(self, event: Materialization, actor: str, received_at: datetime) -> bool:
         """Return False for exact replay; reject conflicting IDs atomically."""
         if utc(received_at) < event.completed_at:
@@ -159,6 +166,50 @@ class FreshnessStore:
             conn.execute("INSERT INTO materializations VALUES(?,?,?,?,?,?,?)", values + (stamp(received_at),))
             self._audit(conn, actor, "materialization.recorded", event.feature_set, received_at, {"event_id": event.event_id, "partition": event.partition})
             return True
+
+    def record_batch(self, events: list[Materialization], actor: str, received_at: datetime) -> tuple[int, int]:
+        """Record multiple materializations atomically; return (created, replayed)."""
+        if not events:
+            return 0, 0
+        rec_time = utc(received_at)
+        feature_sets = {e.feature_set for e in events}
+        if len(feature_sets) > 1:
+            raise ValueError("batch materializations must belong to a single feature set")
+        feature_set = next(iter(feature_sets))
+        for event in events:
+            if rec_time < event.completed_at:
+                raise ValueError("job completion cannot be in the future at ingestion")
+
+        created = 0
+        replayed = 0
+        seen_in_batch: dict[str, tuple] = {}
+
+        with self.connection(write=True) as conn:
+            if not conn.execute("SELECT 1 FROM feature_policies WHERE feature_set=?", (feature_set,)).fetchone():
+                raise NotFoundError("feature policy not found")
+
+            for event in events:
+                values = (event.event_id, event.feature_set, event.partition, stamp(event.source_watermark), stamp(event.completed_at), event.row_count)
+                if event.event_id in seen_in_batch:
+                    if seen_in_batch[event.event_id] != values:
+                        raise ConflictError("event ID already identifies a different materialization in batch")
+                    replayed += 1
+                    continue
+
+                existing = conn.execute("SELECT event_id,feature_set,partition_name,source_watermark,completed_at,row_count FROM materializations WHERE event_id=?", (event.event_id,)).fetchone()
+                if existing:
+                    if tuple(existing) != values:
+                        raise ConflictError("event ID already identifies a different materialization")
+                    replayed += 1
+                    seen_in_batch[event.event_id] = values
+                    continue
+
+                conn.execute("INSERT INTO materializations VALUES(?,?,?,?,?,?,?)", values + (stamp(received_at),))
+                seen_in_batch[event.event_id] = values
+                created += 1
+
+            self._audit(conn, actor, "materializations.batch_recorded", feature_set, received_at, {"count": len(events), "created": created, "replayed": replayed})
+            return created, replayed
 
     @staticmethod
     def _incidents(conn, feature_set: str) -> tuple[Incident, ...]:

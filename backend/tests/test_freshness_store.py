@@ -105,3 +105,25 @@ class FreshnessStoreTests(unittest.TestCase):
         with self.assertRaises(ConflictError):
             self.store.save_policy(self.policy, "operator", BASE+timedelta(seconds=1), 1)
         self.assertEqual(self.store.policies()[0]["version"], 1)
+
+    def test_record_batch_atomicity_and_deduplication(self):
+        ev1 = Materialization("b1", "risk", "us", BASE-timedelta(seconds=20), BASE, 50)
+        ev2 = Materialization("b2", "risk", "eu", BASE-timedelta(seconds=10), BASE, 30)
+        created, replayed = self.store.record_batch([ev1, ev2], "ingestor", BASE)
+        self.assertEqual((created, replayed), (2, 0))
+
+        # Replaying exact batch
+        created2, replayed2 = self.store.record_batch([ev1, ev2], "ingestor", BASE)
+        self.assertEqual((created2, replayed2), (0, 2))
+
+        # Conflicting event in batch fails
+        conflicting = Materialization("b1", "risk", "us", BASE-timedelta(seconds=100), BASE, 999)
+        with self.assertRaises(ConflictError):
+            self.store.record_batch([conflicting], "ingestor", BASE)
+
+    def test_policy_by_name_and_empty_batch(self):
+        pol = self.store.policy_by_name("risk")
+        self.assertEqual(pol["feature_set"], "risk")
+        with self.assertRaises(NotFoundError):
+            self.store.policy_by_name("nonexistent")
+        self.assertEqual(self.store.record_batch([], "ingestor", BASE), (0, 0))

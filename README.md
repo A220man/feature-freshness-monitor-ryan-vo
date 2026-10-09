@@ -1,15 +1,16 @@
 # Feature Freshness Monitor — Ryan Vo | AI & Machine Learning
 
-Current version: `1.0.0`.
+Current version: `1.1.0`.
 
 Feature Freshness Monitor helps ML platform teams detect stale or missing feature partitions before model predictions consume them. Its deterministic source-watermark engine distinguishes recently completed jobs from genuinely fresh source data. Optional AI explanations summarize measured partition health; they never change policies or incidents.
 
 ## Workflows
 
 - Create partition freshness policies with optimistic version checks.
-- Record materializations using replay-safe event IDs and source watermarks.
+- Record materializations using replay-safe event IDs and source watermarks, individually or via atomic batch imports.
+- Search and filter partition health across regions/modalities, surfacing unexpected materializations.
 - Evaluate missing/stale partitions and reconcile incident recovery transactionally.
-- Inspect paginated incident timelines and administrator-only audit history.
+- Inspect paginated incident timelines, administrator audit history, and export full JSON health snapshots.
 - Request optional explanations from a configurable LLM provider.
 
 ```mermaid
@@ -118,11 +119,13 @@ Interactive OpenAPI documentation is available on the backend at `/docs`. All `/
 | GET | `/api/features` | Policies in a `features` envelope |
 | PUT | `/api/features/{feature}` | Save policy with `expected_version` |
 | POST | `/api/features/{feature}/materializations` | Ingest one replay-safe event |
+| POST | `/api/features/{feature}/materializations/batch` | Ingest atomic batch of events |
 | GET | `/api/features/{feature}/health` | Read current partition health |
 | POST | `/api/features/{feature}/evaluate` | Reconcile incidents and transitions |
 | GET | `/api/features/{feature}/incidents?active_only=true` | Inspect incidents |
 | GET | `/api/features/{feature}/timeline?after=0&limit=100` | Cursor-based transition history |
 | GET | `/api/features/{feature}/audit?after=0&limit=100` | Administrator audit history |
+| GET | `/api/features/{feature}/export` | Export policy, health, and incidents |
 | POST | `/api/features/{feature}/advisory` | Optional server-grounded explanation |
 
 Policy input: `{"expected_partitions":["us","eu"],"max_age_seconds":300,"grace_seconds":30,"expected_version":0}`. Creation uses version 0; subsequent updates must use the observed version. Materializations require `event_id`, `partition`, timezone-aware ISO timestamps `source_watermark` and `completed_at`, and nonnegative integer `row_count`. Responses distinguish missing resources (404), stale versions/conflicting event IDs (409), invalid input (422), and authorization failures (401/403). Exact event replays return `created:false` without duplicate state.

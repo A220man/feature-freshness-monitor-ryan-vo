@@ -134,3 +134,30 @@ class FeatureApiTests(unittest.TestCase):
         self.assertEqual(len(first["events"])+len(second["events"]), 2)
         for query in ["limit=0", "limit=1001", "after=-1"]:
             self.assertEqual(self.client.get("/api/features/risk/timeline?"+query, headers=self.viewer).status_code, 422)
+
+    def test_batch_ingest_and_export(self):
+        self.policy()
+        batch = [
+            self.materialization(event_id="batch-1", age=20),
+            {"event_id": "batch-2", "partition": "eu", "source_watermark": (BASE-timedelta(seconds=15)).isoformat(), "completed_at": BASE.isoformat(), "row_count": 45},
+        ]
+        # Viewer cannot batch ingest
+        self.assertEqual(self.client.post("/api/features/risk/materializations/batch", json=batch, headers=self.viewer).status_code, 403)
+        # Operator can batch ingest
+        res = self.client.post("/api/features/risk/materializations/batch", json=batch, headers=self.operator)
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.json()["created"], 2)
+        self.assertEqual(res.json()["total"], 2)
+
+        # Empty batch rejected
+        self.assertEqual(self.client.post("/api/features/risk/materializations/batch", json=[], headers=self.operator).status_code, 422)
+
+        # Export returns full snapshot
+        exp = self.client.get("/api/features/risk/export", headers=self.viewer)
+        self.assertEqual(exp.status_code, 200)
+        data = exp.json()
+        self.assertEqual(data["feature_set"], "risk")
+        self.assertIn("policy", data)
+        self.assertIn("health", data)
+        self.assertIn("incidents", data)
+        self.assertEqual(data["health"]["coverage"], 1.0)

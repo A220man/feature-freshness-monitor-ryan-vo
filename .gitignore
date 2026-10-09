@@ -12,3 +12,5 @@ coverage/
 *.log
 .portfolio-*.json
 frontend/tests/react-app.js
+.antigravitycli/
+.omp/

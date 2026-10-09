@@ -89,6 +89,34 @@ def create_router(store: FreshnessStore, authenticate: Callable, clock: Callable
         created = invoke_domain(store.record_materialization, event, principal.subject, clock())
         return {"event_id": body.event_id, "created": created}
 
+    @router.post("/features/{feature_set}/materializations/batch", status_code=201)
+    def ingest_batch(feature_set: str, items: list[MaterializationInput], principal: Principal = Depends(authenticate)):
+        require_role(principal, {"operator", "admin"})
+        if not items:
+            raise HTTPException(422, "Batch must contain at least one materialization")
+        if len(items) > 500:
+            raise HTTPException(422, "Batch size exceeds limit of 500 items")
+        events = [
+            invoke_domain(Materialization, item.event_id, feature_set, item.partition, item.source_watermark, item.completed_at, item.row_count)
+            for item in items
+        ]
+        created, replayed = invoke_domain(store.record_batch, events, principal.subject, clock())
+        return {"total": len(items), "created": created, "replayed": replayed, "event_ids": [m.event_id for m in items]}
+
+    @router.get("/features/{feature_set}/export")
+    def export_snapshot(feature_set: str, principal: Principal = Depends(authenticate)):
+        require_role(principal, {"viewer", "operator", "admin"})
+        policy_info = invoke_domain(store.policy_by_name, feature_set)
+        evaluation = invoke_domain(store.snapshot, feature_set, clock())
+        incidents = invoke_domain(store.incidents, feature_set)
+        return {
+            "feature_set": feature_set,
+            "exported_at": clock().isoformat(),
+            "policy": policy_info,
+            "health": evaluation_payload(evaluation),
+            "incidents": [asdict(i) for i in incidents],
+        }
+
     @router.get("/features/{feature_set}/health")
     def health(feature_set: str, principal: Principal = Depends(authenticate)):
         require_role(principal, {"viewer", "operator", "admin"})

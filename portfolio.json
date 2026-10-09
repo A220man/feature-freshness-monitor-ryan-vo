@@ -1,8 +1,10 @@
 {
+  "schema_version": 1,
   "name": "feature-freshness-monitor-ryan-vo",
   "owner": "A220man",
   "email": "ryandtvo@gmail.com",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "domain": "mlops",
   "summary": "Monitor ML feature pipeline source-watermark freshness, replay-safe ingestion, and auditable incident recovery with optional grounded AI advice.",
   "workflows": [
     "Configure versioned partition freshness policies",
@@ -10,5 +12,12 @@
     "Evaluate and reconcile stale or missing feature incidents",
     "Inspect timelines and administrator audit logs",
     "Request provider-neutral advisory explanations"
+  ],
+  "auth": "oidc-keycloak-saml-broker",
+  "llm_providers": [
+    "openai-compatible",
+    "anthropic",
+    "gemini",
+    "ollama"
   ]
 }
