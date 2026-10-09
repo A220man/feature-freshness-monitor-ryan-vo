@@ -3,7 +3,7 @@
   "name": "feature-freshness-monitor-ryan-vo",
   "owner": "A220man",
   "email": "ryandtvo@gmail.com",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "domain": "mlops",
   "summary": "Monitor ML feature pipeline source-watermark freshness, replay-safe ingestion, and auditable incident recovery with optional grounded AI advice.",
   "workflows": [

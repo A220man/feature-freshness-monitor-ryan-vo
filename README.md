@@ -1,6 +1,6 @@
 # Feature Freshness Monitor — Ryan Vo | AI & Machine Learning
 
-Current version: `1.0.0`.
+Current version: `1.1.0`.
 
 Feature Freshness Monitor helps ML platform teams detect stale or missing feature partitions before model predictions consume them. Its deterministic source-watermark engine distinguishes recently completed jobs from genuinely fresh source data. Optional AI explanations summarize measured partition health; they never change policies or incidents.
 
