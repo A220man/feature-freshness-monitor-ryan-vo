@@ -5,12 +5,13 @@
   "email": "ryandtvo@gmail.com",
   "version": "1.1.0",
   "domain": "mlops",
-  "summary": "Monitor ML feature pipeline source-watermark freshness, replay-safe ingestion, and auditable incident recovery with optional grounded AI advice.",
+  "summary": "Work in progress: feature-freshness-monitor-ryan-vo",
   "workflows": [
     "Configure versioned partition freshness policies",
     "Ingest idempotent feature materializations",
     "Evaluate and reconcile stale or missing feature incidents",
     "Inspect timelines and administrator audit logs",
+    "Inspect materialization event logs and partition ingestion telemetry",
     "Request provider-neutral advisory explanations"
   ],
   "auth": "oidc-keycloak-saml-broker",
@@ -19,5 +20,6 @@
     "anthropic",
     "gemini",
     "ollama"
-  ]
+  ],
+  "status": "work-in-progress"
 }

@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "current_feature": "materialization-history-and-telemetry",
+  "features": [
+    {
+      "id": "policy-management",
+      "title": "Partition Freshness Policy Management",
+      "status": "done",
+      "acceptance": [
+        "Define partition freshness policies with max age and grace seconds",
+        "Optimistic version concurrency checks prevent lost updates"
+      ],
+      "implementation": [
+        "backend/app/domain/freshness.py",
+        "backend/app/services/freshness_store.py",
+        "backend/app/api/features.py",
+        "frontend/src/PolicyEditor.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_freshness_domain.py",
+        "backend/tests/test_features_api.py",
+        "frontend/src/workflows.test.tsx"
+      ]
+    },
+    {
+      "id": "materialization-ingest",
+      "title": "Replay-Safe Materialization Ingestion",
+      "status": "done",
+      "acceptance": [
+        "Ingest replay-safe materializations with idempotency on duplicate event IDs",
+        "Reject conflicting materializations and future timestamps"
+      ],
+      "implementation": [
+        "backend/app/domain/freshness.py",
+        "backend/app/services/freshness_store.py",
+        "backend/app/api/features.py",
+        "frontend/src/MaterializationForm.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_freshness_store.py",
+        "backend/tests/test_features_api.py",
+        "frontend/src/workflows.test.tsx"
+      ]
+    },
+    {
+      "id": "freshness-evaluation",
+      "title": "Source-Watermark Freshness Evaluation & Incident Recovery",
+      "status": "done",
+      "acceptance": [
+        "Evaluate source-watermark freshness against policy deadlines",
+        "Open, track, and resolve stale and missing incidents transactionally"
+      ],
+      "implementation": [
+        "backend/app/domain/freshness.py",
+        "backend/app/services/freshness_store.py",
+        "backend/app/api/features.py",
+        "frontend/src/FeatureWorkspace.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_freshness_domain.py",
+        "backend/tests/test_freshness_store.py",
+        "backend/tests/test_features_api.py"
+      ]
+    },
+    {
+      "id": "audit-and-timeline",
+      "title": "Administrator Audit Log & Incident Timeline",
+      "status": "done",
+      "acceptance": [
+        "Record admin audit logs for policy and ingestion events",
+        "Track cursor-paginated timeline of incident transitions"
+      ],
+      "implementation": [
+        "backend/app/services/freshness_store.py",
+        "backend/app/api/features.py",
+        "frontend/src/FeatureWorkspace.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_freshness_store.py",
+        "backend/tests/test_features_api.py"
+      ]
+    },
+    {
+      "id": "oidc-pkce-auth",
+      "title": "OIDC PKCE Authentication & Role-Based Access Control",
+      "status": "done",
+      "acceptance": [
+        "Authenticate users via Keycloak OIDC authorization code flow with PKCE and state/nonce validation",
+        "Enforce role-based access control across viewer, operator, and admin roles"
+      ],
+      "implementation": [
+        "backend/app/security/oidc.py",
+        "backend/app/main.py",
+        "frontend/src/auth-flow.ts",
+        "frontend/src/FreshnessApp.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_oidc.py",
+        "frontend/tests/auth-flow.test.mjs",
+        "frontend/tests/react-integration.test.mjs"
+      ]
+    },
+    {
+      "id": "llm-advisory",
+      "title": "Provider-Neutral AI Freshness Explanations",
+      "status": "done",
+      "acceptance": [
+        "Provide opt-in advisory explanations grounded in actual partition health",
+        "Support multiple providers with explicit unavailable states without fabricating responses"
+      ],
+      "implementation": [
+        "backend/app/services/llm_advisory.py",
+        "backend/app/api/advisory.py",
+        "frontend/src/AdvisoryPanel.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_llm_advisory.py",
+        "backend/tests/test_advisory_api.py",
+        "frontend/src/workflows.test.tsx"
+      ]
+    },
+    {
+      "id": "batch-ingest-and-export",
+      "title": "Batch Ingestion, Health Filtering & Snapshot Export",
+      "status": "done",
+      "acceptance": [
+        "Ingest atomic batches of materializations with replay reporting",
+        "Export complete feature health, policy, and incident snapshots as JSON",
+        "Filter and search partitions in operator workspace"
+      ],
+      "implementation": [
+        "backend/app/api/features.py",
+        "backend/app/services/freshness_store.py",
+        "frontend/src/BatchImportForm.tsx",
+        "frontend/src/FeatureWorkspace.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_features_api.py",
+        "backend/tests/test_freshness_store.py",
+        "frontend/src/workflows.test.tsx"
+      ]
+    },
+    {
+      "id": "materialization-history-and-telemetry",
+      "title": "Materialization Event History and Ingestion Telemetry",
+      "status": "done",
+      "acceptance": [
+        "Query recent materialization events for a feature set with optional partition filter and limit pagination",
+        "Return event ID, partition, source watermark, completed at, row count, and ingestion receipt timestamp",
+        "Surface materialization event history table in the operator console with partition filtering and empty state",
+        "Reject unauthorized unauthenticated or malformed requests"
+      ],
+      "implementation": [
+        "backend/app/services/freshness_store.py",
+        "backend/app/api/features.py",
+        "frontend/src/feature-api.ts",
+        "frontend/src/FeatureWorkspace.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_freshness_store.py",
+        "backend/tests/test_features_api.py",
+        "frontend/src/workflows.test.tsx"
+      ]
+    },
+    {
+      "id": "partition-staleness-alert-webhooks",
+      "title": "Configurable Webhook Alert Dispatcher",
+      "status": "planned",
+      "acceptance": [
+        "Dispatch signed HTTP webhook notifications to registered endpoints when incidents open or resolve"
+      ],
+      "implementation": [],
+      "tests": []
+    }
+  ]
+}

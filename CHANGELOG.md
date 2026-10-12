@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 — work-in-progress checkpoint
+
+Partial code published for continued development. Known issues: STATUS.md.
+
+- Queryable materialization event history endpoint with partition filtering and limit pagination.
+- Operator workspace table surfacing recent materializations, row counts, and ingestion telemetry.
+- SQLite index on feature set completion time for optimized event log queries.
+
 ## [1.1.0] - 2026-10-09
 
 - Batch materialization ingestion endpoint and interactive UI form for bulk pipeline syncs.

@@ -127,3 +127,36 @@ class FreshnessStoreTests(unittest.TestCase):
         with self.assertRaises(NotFoundError):
             self.store.policy_by_name("nonexistent")
         self.assertEqual(self.store.record_batch([], "ingestor", BASE), (0, 0))
+
+    def test_materializations_query_and_filtering(self):
+        with self.assertRaises(NotFoundError):
+            self.store.materializations("unknown_feature")
+        with self.assertRaises(ValueError):
+            self.store.materializations("risk", limit=0)
+        with self.assertRaises(ValueError):
+            self.store.materializations("risk", limit=501)
+
+        # Initially empty
+        self.assertEqual(self.store.materializations("risk"), [])
+
+        # Ingest events across partitions
+        ev1 = Materialization("m1", "risk", "us", BASE-timedelta(seconds=50), BASE-timedelta(seconds=10), 10)
+        ev2 = Materialization("m2", "risk", "eu", BASE-timedelta(seconds=40), BASE-timedelta(seconds=5), 20)
+        ev3 = Materialization("m3", "risk", "us", BASE-timedelta(seconds=20), BASE, 30)
+        self.store.record_batch([ev1, ev2, ev3], "ingestor", BASE)
+
+        # All events ordered by completed_at DESC
+        all_events = self.store.materializations("risk")
+        self.assertEqual(len(all_events), 3)
+        self.assertEqual([e["event_id"] for e in all_events], ["m3", "m2", "m1"])
+
+        # Filtered by partition
+        us_events = self.store.materializations("risk", partition="us")
+        self.assertEqual(len(us_events), 2)
+        self.assertEqual([e["event_id"] for e in us_events], ["m3", "m1"])
+
+        # With limit
+        limited = self.store.materializations("risk", limit=1)
+        self.assertEqual(len(limited), 1)
+        self.assertEqual(limited[0]["event_id"], "m3")
+

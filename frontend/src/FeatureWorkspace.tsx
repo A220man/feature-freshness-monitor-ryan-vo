@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FeatureApi, Principal, Policy, Evaluation, Incident, TimelineEvent, AuditEvent, Page } from './feature-api'
+import type { FeatureApi, Principal, Policy, Evaluation, Incident, TimelineEvent, AuditEvent, Page, MaterializationRecord } from './feature-api'
 import { PolicyEditor } from './PolicyEditor'
 import { MaterializationForm } from './MaterializationForm'
 import { BatchImportForm } from './BatchImportForm'
@@ -11,6 +11,7 @@ export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: 
   const [creating, setCreating] = useState(false)
   const [health, setHealth] = useState<Evaluation | null>(null)
   const [incidents, setIncidents] = useState<Incident[]>([])
+  const [materializations, setMaterializations] = useState<MaterializationRecord[]>([])
   const [timeline, setTimeline] = useState<Page<TimelineEvent>>({events:[], next_cursor:0})
   const [audit, setAudit] = useState<Page<AuditEvent>>({events:[], next_cursor:0})
   const [error, setError] = useState('')
@@ -28,12 +29,13 @@ export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: 
     try {
       const list = await api.policies()
       const feature = name || list[0]?.feature_set || ''
-      if (!feature) {if(id===requestId.current){setPolicies(list);setSelected('');setHealth(null)};return}
-      const [evaluation, active, events, auditEvents] = await Promise.all([
+      if (!feature) {if(id===requestId.current){setPolicies(list);setSelected('');setHealth(null);setMaterializations([])};return}
+      const [evaluation, active, events, auditEvents, matEvents] = await Promise.all([
         api.health(feature), api.incidents(feature), api.timeline(feature,0,25), admin ? api.audit(feature,0,25) : Promise.resolve({events:[],next_cursor:0}),
+        typeof api.materializations === 'function' ? api.materializations(feature, undefined, 25).catch(() => []) : Promise.resolve([]),
       ])
       if (id !== requestId.current) return
-      setPolicies(list);setSelected(feature);setHealth(evaluation);setIncidents(active);setTimeline(events);setAudit(auditEvents)
+      setPolicies(list);setSelected(feature);setHealth(evaluation);setIncidents(active);setTimeline(events);setAudit(auditEvents);setMaterializations(matEvents)
     } catch (error) {if(id===requestId.current)setError(error instanceof Error ? error.message : 'Unable to load feature sets')}
   }, [api,admin])
 
@@ -79,6 +81,11 @@ export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: 
     return true
   })
 
+  const displayedMaterializations = materializations.filter(m => {
+    if (partitionSearch.trim() && !m.partition.toLowerCase().includes(partitionSearch.trim().toLowerCase())) return false
+    return true
+  })
+
   return <main><h1>Feature Freshness Monitor</h1><p>Detect stale or missing model features, reconcile incidents, and audit pipeline recovery.</p>
     {error && <p role="alert">{error}</p>}
     <nav aria-label="Feature controls"><label>Feature set selection<select value={selected} onChange={e=>{setCreating(false);setPartitionSearch('');setStatusFilter('all');void refresh(e.target.value)}}><option value="" disabled>Select a feature set</option>{policies.map(p=><option key={p.feature_set}>{p.feature_set}</option>)}</select></label>
@@ -114,6 +121,13 @@ export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: 
       {operator && <MaterializationForm key={selected} api={api} policy={policy} onSaved={()=>refresh(selected)} />}
       {operator && <BatchImportForm key={selected+":batch"} api={api} policy={policy} onSaved={()=>refresh(selected)} />}
       <section><h2>Active incidents</h2>{incidents.length?<ul>{incidents.map(i=><li key={i.incident_id}>{i.partition}: {i.condition}, opened {i.opened_at}</li>)}</ul>:<p>No active incidents.</p>}</section>
+      <section><h2>Recent materializations</h2>
+        {displayedMaterializations.length ? (
+          <table><thead><tr><th>Event ID</th><th>Partition</th><th>Source watermark</th><th>Completed at</th><th>Rows</th></tr></thead><tbody>{displayedMaterializations.map(m=><tr key={m.event_id}><td>{m.event_id}</td><td>{m.partition}</td><td>{m.source_watermark}</td><td>{m.completed_at}</td><td>{m.row_count}</td></tr>)}</tbody></table>
+        ) : (
+          <p>No materialization events recorded.</p>
+        )}
+      </section>
       <section><h2>Incident timeline</h2><ol>{timeline.events.map(e=><li key={e.sequence}>{e.occurred_at}: {e.partition_name} {e.condition} incident {e.action}</li>)}</ol><button disabled={!timeline.events.length} onClick={()=>void loadMore('timeline')}>Load more timeline entries</button></section>
       {operator && <PolicyEditor api={api} policy={policy} onSaved={refresh}/>}
       {admin && <><section><h2>Audit log</h2><ol>{audit.events.map(e=><li key={e.sequence}>{e.occurred_at}: {e.actor} — {e.action}<pre>{e.detail_json}</pre></li>)}</ol><button disabled={!audit.events.length} onClick={()=>void loadMore('audit')}>Load more audit entries</button></section></>}
