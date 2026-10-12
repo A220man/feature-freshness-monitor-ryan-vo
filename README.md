@@ -1,5 +1,8 @@
 # Feature Freshness Monitor — Ryan Vo | AI & Machine Learning
 
+> Work in progress. This checkpoint may be incomplete or fail tests. See PLAN.md and STATUS.md before use.
+
+
 Current version: `1.1.0`.
 
 Feature Freshness Monitor helps ML platform teams detect stale or missing feature partitions before model predictions consume them. Its deterministic source-watermark engine distinguishes recently completed jobs from genuinely fresh source data. Optional AI explanations summarize measured partition health; they never change policies or incidents.
@@ -7,8 +10,8 @@ Feature Freshness Monitor helps ML platform teams detect stale or missing featur
 ## Workflows
 
 - Create partition freshness policies with optimistic version checks.
-- Record materializations using replay-safe event IDs and source watermarks, individually or via atomic batch imports.
-- Search and filter partition health across regions/modalities, surfacing unexpected materializations.
+- Record and query materializations using replay-safe event IDs and source watermarks, individually or via atomic batch imports.
+- Search and filter partition health and event logs across regions/modalities, surfacing unexpected materializations.
 - Evaluate missing/stale partitions and reconcile incident recovery transactionally.
 - Inspect paginated incident timelines, administrator audit history, and export full JSON health snapshots.
 - Request optional explanations from a configurable LLM provider.
@@ -120,6 +123,7 @@ Interactive OpenAPI documentation is available on the backend at `/docs`. All `/
 | PUT | `/api/features/{feature}` | Save policy with `expected_version` |
 | POST | `/api/features/{feature}/materializations` | Ingest one replay-safe event |
 | POST | `/api/features/{feature}/materializations/batch` | Ingest atomic batch of events |
+| GET | `/api/features/{feature}/materializations` | Query recent materialization events |
 | GET | `/api/features/{feature}/health` | Read current partition health |
 | POST | `/api/features/{feature}/evaluate` | Reconcile incidents and transitions |
 | GET | `/api/features/{feature}/incidents?active_only=true` | Inspect incidents |

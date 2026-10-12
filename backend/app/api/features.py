@@ -103,6 +103,17 @@ def create_router(store: FreshnessStore, authenticate: Callable, clock: Callable
         created, replayed = invoke_domain(store.record_batch, events, principal.subject, clock())
         return {"total": len(items), "created": created, "replayed": replayed, "event_ids": [m.event_id for m in items]}
 
+    @router.get("/features/{feature_set}/materializations")
+    def list_materializations(
+        feature_set: str,
+        partition: str | None = None,
+        limit: int = Query(default=50, ge=1, le=500),
+        principal: Principal = Depends(authenticate),
+    ):
+        require_role(principal, {"viewer", "operator", "admin"})
+        rows = invoke_domain(store.materializations, feature_set, partition, limit)
+        return {"materializations": rows}
+
     @router.get("/features/{feature_set}/export")
     def export_snapshot(feature_set: str, principal: Principal = Depends(authenticate)):
         require_role(principal, {"viewer", "operator", "admin"})

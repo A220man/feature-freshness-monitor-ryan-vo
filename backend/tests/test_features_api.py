@@ -161,3 +161,45 @@ class FeatureApiTests(unittest.TestCase):
         self.assertIn("health", data)
         self.assertIn("incidents", data)
         self.assertEqual(data["health"]["coverage"], 1.0)
+
+    def test_materializations_route_and_authorization(self):
+        self.policy()
+        # Unauthenticated request rejected
+        self.assertEqual(self.client.get("/api/features/risk/materializations").status_code, 401)
+
+        # Viewer can query empty materializations
+        res = self.client.get("/api/features/risk/materializations", headers=self.viewer)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["materializations"], [])
+
+        # Ingest events
+        self.client.post("/api/features/risk/materializations", json=self.materialization(event_id="ev-1"), headers=self.operator)
+        self.client.post("/api/features/risk/materializations", json={"event_id": "ev-2", "partition": "eu", "source_watermark": (BASE-timedelta(seconds=10)).isoformat(), "completed_at": BASE.isoformat(), "row_count": 99}, headers=self.operator)
+
+        # Query all
+        res = self.client.get("/api/features/risk/materializations", headers=self.viewer)
+        self.assertEqual(res.status_code, 200)
+        events = res.json()["materializations"]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]["event_id"], "ev-2")
+        self.assertEqual(events[0]["partition"], "eu")
+        self.assertEqual(events[0]["row_count"], 99)
+
+        # Query with partition filter
+        res_us = self.client.get("/api/features/risk/materializations?partition=us", headers=self.viewer)
+        self.assertEqual(res_us.status_code, 200)
+        us_events = res_us.json()["materializations"]
+        self.assertEqual(len(us_events), 1)
+        self.assertEqual(us_events[0]["event_id"], "ev-1")
+
+        # Query with limit
+        res_lim = self.client.get("/api/features/risk/materializations?limit=1", headers=self.viewer)
+        self.assertEqual(res_lim.status_code, 200)
+        self.assertEqual(len(res_lim.json()["materializations"]), 1)
+
+        # Unknown feature returns 404
+        self.assertEqual(self.client.get("/api/features/unknown/materializations", headers=self.viewer).status_code, 404)
+
+        # Invalid limit query param returns 422
+        self.assertEqual(self.client.get("/api/features/risk/materializations?limit=0", headers=self.viewer).status_code, 422)
+

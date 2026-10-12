@@ -80,6 +80,8 @@ class FreshnessStore:
             );
             CREATE INDEX IF NOT EXISTS materialization_latest
               ON materializations(feature_set, partition_name, completed_at DESC, event_id DESC);
+            CREATE INDEX IF NOT EXISTS materialization_recent
+              ON materializations(feature_set, completed_at DESC, event_id DESC);
             CREATE TABLE IF NOT EXISTS incidents (
                 incident_id TEXT PRIMARY KEY,
                 feature_set TEXT NOT NULL REFERENCES feature_policies(feature_set),
@@ -280,3 +282,35 @@ class FreshnessStore:
             if not conn.execute("SELECT 1 FROM feature_policies WHERE feature_set=?", (feature_set,)).fetchone():
                 raise NotFoundError("feature policy not found")
             return self._incidents(conn, feature_set)
+
+    def materializations(self, feature_set: str, partition: str | None = None, limit: int = 50) -> list[dict]:
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        with self.connection() as conn:
+            if not conn.execute("SELECT 1 FROM feature_policies WHERE feature_set=?", (feature_set,)).fetchone():
+                raise NotFoundError("feature policy not found")
+            if partition:
+                query = """SELECT event_id, feature_set, partition_name, source_watermark, completed_at, row_count, received_at
+                           FROM materializations
+                           WHERE feature_set=? AND partition_name=?
+                           ORDER BY completed_at DESC, event_id DESC LIMIT ?"""
+                rows = conn.execute(query, (feature_set, partition, limit))
+            else:
+                query = """SELECT event_id, feature_set, partition_name, source_watermark, completed_at, row_count, received_at
+                           FROM materializations
+                           WHERE feature_set=?
+                           ORDER BY completed_at DESC, event_id DESC LIMIT ?"""
+                rows = conn.execute(query, (feature_set, limit))
+            return [
+                {
+                    "event_id": r["event_id"],
+                    "feature_set": r["feature_set"],
+                    "partition": r["partition_name"],
+                    "source_watermark": r["source_watermark"],
+                    "completed_at": r["completed_at"],
+                    "row_count": r["row_count"],
+                    "received_at": r["received_at"],
+                }
+                for r in rows
+            ]
+

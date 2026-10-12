@@ -10,6 +10,7 @@ export interface TimelineEvent { sequence: number; incident_id: string; action: 
 export interface AuditEvent { sequence: number; actor: string; action: string; feature_set: string; occurred_at: string; detail_json: string }
 export interface Page<T> { events: T[]; next_cursor: number }
 export interface BatchResult { total: number; created: number; replayed: number; event_ids: string[] }
+export interface MaterializationRecord { event_id: string; feature_set: string; partition: string; source_watermark: string; completed_at: string; row_count: number; received_at: string }
 export interface FeatureExport { feature_set: string; exported_at: string; policy: Policy; health: Evaluation; incidents: Incident[] }
 
 export class ApiError extends Error {
@@ -55,6 +56,11 @@ export class FeatureApi {
   }
   batchIngest(feature: string, events: MaterializationInput[]): Promise<BatchResult> {
     return this.request(`/features/${encodeURIComponent(feature)}/materializations/batch`, 'POST', events)
+  }
+  async materializations(feature: string, partition?: string, limit = 50): Promise<MaterializationRecord[]> {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (partition) params.set('partition', partition)
+    return (await this.request<{ materializations: MaterializationRecord[] }>(`/features/${encodeURIComponent(feature)}/materializations?${params}`)).materializations
   }
   export(feature: string): Promise<FeatureExport> {
     return this.request(`/features/${encodeURIComponent(feature)}/export`)

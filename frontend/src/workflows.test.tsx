@@ -69,4 +69,32 @@ describe('operator workflows',()=>{
   expect(await screen.findByRole('status')).toHaveTextContent('Freshness snapshot exported.')
   expect(mockExport).toHaveBeenCalledWith('risk')
  })
+ it('displays recent materialization events and filters them by partition',async()=>{
+  const healthData={
+   feature_set:'risk',evaluated_at:'2026-01-01T12:00:00Z',
+   partitions:[
+    {feature_set:'risk',partition:'us-east',status:'fresh' as const,evaluated_at:'2026-01-01T12:00:00Z',event_id:'mat-1',source_watermark:'2026-01-01T11:59:00Z',completed_at:'2026-01-01T12:00:00Z',source_age_seconds:60,materialization_delay_seconds:60,overdue_seconds:0,due_at:null,row_count:150},
+   ],
+   unexpected_partitions:[],healthy:true,coverage:1,stale_count:0,missing_count:0,
+  }
+  const materializationsList=[
+   {event_id:'mat-1',feature_set:'risk',partition:'us-east',source_watermark:'2026-01-01T11:59:00Z',completed_at:'2026-01-01T12:00:00Z',row_count:150,received_at:'2026-01-01T12:00:01Z'},
+   {event_id:'mat-2',feature_set:'risk',partition:'eu-central',source_watermark:'2026-01-01T11:50:00Z',completed_at:'2026-01-01T11:55:00Z',row_count:75,received_at:'2026-01-01T11:55:01Z'},
+  ]
+  const mockApi={
+   policies:vi.fn().mockResolvedValue([policy]),
+   health:vi.fn().mockResolvedValue(healthData),
+   incidents:vi.fn().mockResolvedValue([]),
+   timeline:vi.fn().mockResolvedValue({events:[],next_cursor:0}),
+   audit:vi.fn().mockResolvedValue({events:[],next_cursor:0}),
+   materializations:vi.fn().mockResolvedValue(materializationsList),
+  } as unknown as FeatureApi
+  render(<FeatureWorkspace api={mockApi} principal={{subject:'tester',roles:['viewer']}}/>)
+  expect(await screen.findByText('Recent materializations')).toBeInTheDocument()
+  expect(await screen.findByText('mat-1')).toBeInTheDocument()
+  expect(screen.getByText('mat-2')).toBeInTheDocument()
+  fireEvent.change(screen.getByPlaceholderText('Filter partition names…'),{target:{value:'central'}})
+  expect(screen.queryByText('mat-1')).not.toBeInTheDocument()
+  expect(screen.getByText('mat-2')).toBeInTheDocument()
+ })
 })
