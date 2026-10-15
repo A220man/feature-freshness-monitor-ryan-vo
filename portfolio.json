@@ -10,6 +10,7 @@
     "Configure versioned partition freshness policies",
     "Ingest idempotent feature materializations",
     "Evaluate and reconcile stale or missing feature incidents",
+    "Dispatch HMAC-SHA256 signed webhook alerts on incident transitions",
     "Inspect timelines and administrator audit logs",
     "Inspect materialization event logs and partition ingestion telemetry",
     "Request provider-neutral advisory explanations"

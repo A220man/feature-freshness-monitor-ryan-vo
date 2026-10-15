@@ -13,6 +13,7 @@ Feature Freshness Monitor helps ML platform teams detect stale or missing featur
 - Record and query materializations using replay-safe event IDs and source watermarks, individually or via atomic batch imports.
 - Search and filter partition health and event logs across regions/modalities, surfacing unexpected materializations.
 - Evaluate missing/stale partitions and reconcile incident recovery transactionally.
+- Register HTTPS alert webhooks and dispatch HMAC-SHA256 signed notifications when incidents open or resolve.
 - Inspect paginated incident timelines, administrator audit history, and export full JSON health snapshots.
 - Request optional explanations from a configurable LLM provider.
 
@@ -124,6 +125,10 @@ Interactive OpenAPI documentation is available on the backend at `/docs`. All `/
 | POST | `/api/features/{feature}/materializations` | Ingest one replay-safe event |
 | POST | `/api/features/{feature}/materializations/batch` | Ingest atomic batch of events |
 | GET | `/api/features/{feature}/materializations` | Query recent materialization events |
+| GET | `/api/features/{feature}/webhooks` | List registered HTTPS alert webhooks |
+| POST | `/api/features/{feature}/webhooks` | Register an HMAC-signed alert webhook |
+| DELETE | `/api/features/{feature}/webhooks/{webhook_id}` | Remove a webhook subscription |
+| GET | `/api/features/{feature}/webhooks/deliveries` | Inspect recent webhook delivery outcomes |
 | GET | `/api/features/{feature}/health` | Read current partition health |
 | POST | `/api/features/{feature}/evaluate` | Reconcile incidents and transitions |
 | GET | `/api/features/{feature}/incidents?active_only=true` | Inspect incidents |
