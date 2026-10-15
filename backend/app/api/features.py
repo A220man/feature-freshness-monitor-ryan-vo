@@ -6,11 +6,12 @@ The dependency is also responsible for validating CSRF on cookie mutations.
 """
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Callable, FrozenSet
+from typing import Callable, FrozenSet, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from app.domain.freshness import FreshnessPolicy, Materialization, identifier
 from app.services.freshness_store import FreshnessStore, NotFoundError, ConflictError
+from app.services.webhook_dispatcher import WebhookSender, default_http_sender
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,15 @@ class MaterializationInput(BaseModel):
     row_count: int = Field(ge=0, strict=True)
 
 
+class WebhookInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    target_url: str = Field(min_length=1, max_length=500)
+    events: list[Literal["opened", "resolved"]] = Field(
+        default_factory=lambda: ["opened", "resolved"], min_length=1, max_length=2
+    )
+    signing_secret: str = Field(min_length=8, max_length=200)
+
+
 def current_time() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -66,7 +76,12 @@ def evaluation_payload(evaluation):
             "missing_count": sum(p.status == "missing" for p in evaluation.partitions)}
 
 
-def create_router(store: FreshnessStore, authenticate: Callable, clock: Callable[[], datetime] = current_time) -> APIRouter:
+def create_router(
+    store: FreshnessStore,
+    authenticate: Callable,
+    clock: Callable[[], datetime] = current_time,
+    webhook_sender: WebhookSender = default_http_sender,
+) -> APIRouter:
     """Mount with a real session dependency; there is no anonymous fallback."""
     router = APIRouter(prefix="/api", tags=["feature-freshness"])
 
@@ -114,6 +129,39 @@ def create_router(store: FreshnessStore, authenticate: Callable, clock: Callable
         rows = invoke_domain(store.materializations, feature_set, partition, limit)
         return {"materializations": rows}
 
+    @router.get("/features/{feature_set}/webhooks")
+    def list_webhooks(feature_set: str, principal: Principal = Depends(authenticate)):
+        require_role(principal, {"viewer", "operator", "admin"})
+        return {"webhooks": invoke_domain(store.webhooks, feature_set)}
+
+    @router.post("/features/{feature_set}/webhooks", status_code=201)
+    def register_webhook(feature_set: str, body: WebhookInput, principal: Principal = Depends(authenticate)):
+        require_role(principal, {"operator", "admin"})
+        return invoke_domain(
+            store.register_webhook,
+            feature_set,
+            body.target_url,
+            tuple(body.events),
+            body.signing_secret,
+            principal.subject,
+            clock(),
+        )
+
+    @router.delete("/features/{feature_set}/webhooks/{webhook_id}")
+    def delete_webhook(feature_set: str, webhook_id: str, principal: Principal = Depends(authenticate)):
+        require_role(principal, {"operator", "admin"})
+        invoke_domain(store.delete_webhook, feature_set, webhook_id, principal.subject, clock())
+        return {"deleted": True, "webhook_id": webhook_id}
+
+    @router.get("/features/{feature_set}/webhooks/deliveries")
+    def list_webhook_deliveries(
+        feature_set: str,
+        limit: int = Query(default=50, ge=1, le=500),
+        principal: Principal = Depends(authenticate),
+    ):
+        require_role(principal, {"viewer", "operator", "admin"})
+        return {"deliveries": invoke_domain(store.webhook_deliveries, feature_set, limit)}
+
     @router.get("/features/{feature_set}/export")
     def export_snapshot(feature_set: str, principal: Principal = Depends(authenticate)):
         require_role(principal, {"viewer", "operator", "admin"})
@@ -136,7 +184,7 @@ def create_router(store: FreshnessStore, authenticate: Callable, clock: Callable
     @router.post("/features/{feature_set}/evaluate")
     def run_evaluation(feature_set: str, principal: Principal = Depends(authenticate)):
         require_role(principal, {"operator", "admin"})
-        evaluation, incidents, transitions = invoke_domain(store.evaluate, feature_set, principal.subject, clock())
+        evaluation, incidents, transitions = invoke_domain(store.evaluate, feature_set, principal.subject, clock(), webhook_sender)
         return {"evaluation": evaluation_payload(evaluation), "incidents": [asdict(i) for i in incidents], "transitions": [asdict(t) for t in transitions]}
 
     @router.get("/features/{feature_set}/incidents")

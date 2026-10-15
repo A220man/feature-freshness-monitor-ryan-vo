@@ -11,6 +11,9 @@ export interface AuditEvent { sequence: number; actor: string; action: string; f
 export interface Page<T> { events: T[]; next_cursor: number }
 export interface BatchResult { total: number; created: number; replayed: number; event_ids: string[] }
 export interface MaterializationRecord { event_id: string; feature_set: string; partition: string; source_watermark: string; completed_at: string; row_count: number; received_at: string }
+export interface WebhookInput { target_url: string; events: ('opened' | 'resolved')[]; signing_secret: string }
+export interface WebhookSubscription { webhook_id: string; feature_set: string; target_url: string; events: ('opened' | 'resolved')[]; created_at: string }
+export interface WebhookDelivery { delivery_id: number; webhook_id: string; feature_set: string; incident_id: string; partition: string; condition: 'missing' | 'stale'; action: 'opened' | 'resolved'; target_url: string; signature: string; status: 'delivered' | 'failed'; status_code: number | null; detail: string; occurred_at: string }
 export interface FeatureExport { feature_set: string; exported_at: string; policy: Policy; health: Evaluation; incidents: Incident[] }
 
 export class ApiError extends Error {
@@ -61,6 +64,18 @@ export class FeatureApi {
     const params = new URLSearchParams({ limit: String(limit) })
     if (partition) params.set('partition', partition)
     return (await this.request<{ materializations: MaterializationRecord[] }>(`/features/${encodeURIComponent(feature)}/materializations?${params}`)).materializations
+  }
+  async webhooks(feature: string): Promise<WebhookSubscription[]> {
+    return (await this.request<{ webhooks: WebhookSubscription[] }>(`/features/${encodeURIComponent(feature)}/webhooks`)).webhooks
+  }
+  registerWebhook(feature: string, input: WebhookInput): Promise<WebhookSubscription> {
+    return this.request(`/features/${encodeURIComponent(feature)}/webhooks`, 'POST', input)
+  }
+  deleteWebhook(feature: string, webhookId: string): Promise<{ deleted: boolean; webhook_id: string }> {
+    return this.request(`/features/${encodeURIComponent(feature)}/webhooks/${encodeURIComponent(webhookId)}`, 'DELETE')
+  }
+  async webhookDeliveries(feature: string, limit = 50): Promise<WebhookDelivery[]> {
+    return (await this.request<{ deliveries: WebhookDelivery[] }>(`/features/${encodeURIComponent(feature)}/webhooks/deliveries?limit=${limit}`)).deliveries
   }
   export(feature: string): Promise<FeatureExport> {
     return this.request(`/features/${encodeURIComponent(feature)}/export`)

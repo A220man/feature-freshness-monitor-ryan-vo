@@ -31,8 +31,12 @@ class FeatureApiTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = FreshnessStore(Path(self.temp.name)/"db.sqlite")
         self.store.initialize()
+        self.sent_webhooks = []
+        def fake_sender(url: str, body: bytes, headers: dict[str, str]) -> tuple[int, str]:
+            self.sent_webhooks.append((url, body, headers))
+            return 200, "HTTP 200"
         self.app = FastAPI()
-        self.app.include_router(create_router(self.store, fixture_identity, lambda: BASE))
+        self.app.include_router(create_router(self.store, fixture_identity, lambda: BASE, fake_sender))
         self.client = TestClient(self.app)
         self.addCleanup(self.client.close)
         self.admin = {"X-Test-Principal": "admin", "X-CSRF-Token": "test-csrf"}
@@ -202,4 +206,54 @@ class FeatureApiTests(unittest.TestCase):
 
         # Invalid limit query param returns 422
         self.assertEqual(self.client.get("/api/features/risk/materializations?limit=0", headers=self.viewer).status_code, 422)
+
+    def test_webhooks_lifecycle_and_delivery_history(self):
+        self.policy()
+        payload = {
+            "target_url": "https://hooks.example.com/freshness",
+            "events": ["opened", "resolved"],
+            "signing_secret": "webhook-signing-phrase",
+        }
+        # Unauthenticated and viewer rejected on mutation
+        self.assertEqual(self.client.get("/api/features/risk/webhooks").status_code, 401)
+        self.assertEqual(self.client.post("/api/features/risk/webhooks", json=payload).status_code, 401)
+        self.assertEqual(self.client.post("/api/features/risk/webhooks", json=payload, headers=self.viewer).status_code, 403)
+
+        # Reject private/loopback or non-HTTPS URLs with 422
+        bad = {**payload, "target_url": "http://hooks.example.com/freshness"}
+        self.assertEqual(self.client.post("/api/features/risk/webhooks", json=bad, headers=self.operator).status_code, 422)
+        loopback = {**payload, "target_url": "https://127.0.0.1/freshness"}
+        self.assertEqual(self.client.post("/api/features/risk/webhooks", json=loopback, headers=self.operator).status_code, 422)
+
+        # Operator registers webhook
+        created = self.client.post("/api/features/risk/webhooks", json=payload, headers=self.operator)
+        self.assertEqual(created.status_code, 201)
+        webhook_id = created.json()["webhook_id"]
+        self.assertNotIn("signing_secret", created.json())
+
+        # Duplicate webhook registration returns 409
+        self.assertEqual(self.client.post("/api/features/risk/webhooks", json=payload, headers=self.operator).status_code, 409)
+
+        # Viewer can list webhooks
+        listed = self.client.get("/api/features/risk/webhooks", headers=self.viewer)
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(len(listed.json()["webhooks"]), 1)
+
+        # Evaluation triggers signed webhook deliveries
+        self.client.post("/api/features/risk/evaluate", headers=self.operator)
+        self.assertEqual(len(self.sent_webhooks), 2)
+
+        deliveries = self.client.get("/api/features/risk/webhooks/deliveries", headers=self.viewer)
+        self.assertEqual(deliveries.status_code, 200)
+        items = deliveries.json()["deliveries"]
+        self.assertEqual(len(items), 2)
+        self.assertTrue(all(d["status"] == "delivered" and d["signature"].startswith("sha256=") for d in items))
+
+        # Viewer cannot delete webhook; operator can delete
+        self.assertEqual(self.client.delete(f"/api/features/risk/webhooks/{webhook_id}", headers=self.viewer).status_code, 403)
+        deleted = self.client.delete(f"/api/features/risk/webhooks/{webhook_id}", headers=self.operator)
+        self.assertEqual(deleted.status_code, 200)
+        self.assertTrue(deleted.json()["deleted"])
+        self.assertEqual(self.client.delete(f"/api/features/risk/webhooks/{webhook_id}", headers=self.operator).status_code, 404)
+
 

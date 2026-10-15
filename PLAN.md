@@ -4,7 +4,7 @@ Each round completes one feature or repair. Future items are planned, not implem
 
 ## Current round
 
-materialization-history-and-telemetry
+partition-staleness-alert-webhooks
 
 ## Roadmap
 
@@ -109,8 +109,21 @@ Tests: `backend/tests/test_freshness_store.py`, `backend/tests/test_features_api
 
 ### partition-staleness-alert-webhooks — Configurable Webhook Alert Dispatcher
 
+Status: done
+
+Acceptance:
+- Register, list, and delete HTTPS webhook alert subscriptions with SSRF host validation
+- Dispatch HMAC-SHA256 signed HTTP webhook notifications to registered endpoints when incidents open or resolve
+- Record webhook delivery outcomes and surface webhook management and delivery history in the operator workspace
+
+Implementation: `backend/app/services/webhook_dispatcher.py`, `backend/app/services/freshness_store.py`, `backend/app/api/features.py`, `frontend/src/feature-api.ts`, `frontend/src/WebhookPanel.tsx`, `frontend/src/FeatureWorkspace.tsx`
+
+Tests: `backend/tests/test_freshness_store.py`, `backend/tests/test_features_api.py`, `frontend/src/workflows.test.tsx`
+
+### sla-compliance-analytics — Partition SLA Compliance & Breach Duration Analytics
+
 Status: planned
 
 Acceptance:
-- Dispatch signed HTTP webhook notifications to registered endpoints when incidents open or resolve
+- Compute per-partition incident breach durations and SLA compliance ratios across evaluation windows
 

@@ -97,4 +97,38 @@ describe('operator workflows',()=>{
   expect(screen.queryByText('mat-1')).not.toBeInTheDocument()
   expect(screen.getByText('mat-2')).toBeInTheDocument()
  })
+ it('registers and removes alert webhooks and renders signed delivery history',async()=>{
+  const healthData={
+   feature_set:'risk',evaluated_at:'2026-01-01T12:00:00Z',
+   partitions:[
+    {feature_set:'risk',partition:'us',status:'stale' as const,evaluated_at:'2026-01-01T12:00:00Z',event_id:'m-1',source_watermark:'2026-01-01T11:00:00Z',completed_at:'2026-01-01T12:00:00Z',source_age_seconds:3600,materialization_delay_seconds:60,overdue_seconds:3300,due_at:null,row_count:20},
+   ],
+   unexpected_partitions:[],healthy:false,coverage:1,stale_count:1,missing_count:0,
+  }
+  const registerWebhook=vi.fn().mockResolvedValue({webhook_id:'wh-1',feature_set:'risk',target_url:'https://hooks.example.com/alerts',events:['opened','resolved'],created_at:'2026-01-01T12:00:00Z'})
+  const deleteWebhook=vi.fn().mockResolvedValue({deleted:true,webhook_id:'wh-1'})
+  const mockApi={
+   policies:vi.fn().mockResolvedValue([policy]),
+   health:vi.fn().mockResolvedValue(healthData),
+   incidents:vi.fn().mockResolvedValue([]),
+   timeline:vi.fn().mockResolvedValue({events:[],next_cursor:0}),
+   audit:vi.fn().mockResolvedValue({events:[],next_cursor:0}),
+   materializations:vi.fn().mockResolvedValue([]),
+   webhooks:vi.fn().mockResolvedValue([{webhook_id:'wh-1',feature_set:'risk',target_url:'https://hooks.example.com/alerts',events:['opened','resolved'],created_at:'2026-01-01T12:00:00Z'}]),
+   webhookDeliveries:vi.fn().mockResolvedValue([{delivery_id:1,webhook_id:'wh-1',feature_set:'risk',incident_id:'inc-1',partition:'us',condition:'stale',action:'opened',target_url:'https://hooks.example.com/alerts',signature:'sha256=abcdef0123456789abcdef',status:'delivered',status_code:200,detail:'HTTP 200',occurred_at:'2026-01-01T12:00:00Z'}]),
+   registerWebhook,
+   deleteWebhook,
+  } as unknown as FeatureApi
+  render(<FeatureWorkspace api={mockApi} principal={{subject:'tester',roles:['operator']}}/>)
+  expect(await screen.findByText('Alert webhooks')).toBeInTheDocument()
+  expect(await screen.findByText('delivered (200)')).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Webhook URL'),{target:{value:'https://hooks.example.com/second'}})
+  fireEvent.change(screen.getByLabelText('Signing secret'),{target:{value:'signing-phrase-two'}})
+  fireEvent.click(screen.getByRole('button',{name:'Register webhook'}))
+  expect(await screen.findByRole('status')).toHaveTextContent('Webhook endpoint registered.')
+  expect(registerWebhook).toHaveBeenCalledWith('risk',{target_url:'https://hooks.example.com/second',events:['opened','resolved'],signing_secret:'signing-phrase-two'})
+  fireEvent.click(screen.getByRole('button',{name:'Remove webhook'}))
+  expect(await screen.findByRole('status')).toHaveTextContent('Webhook endpoint removed.')
+  expect(deleteWebhook).toHaveBeenCalledWith('risk','wh-1')
+ })
 })

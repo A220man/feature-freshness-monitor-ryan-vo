@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Feature Freshness Monitor", version=get_version(), lifespan=lifespan)
     if settings.frontend_origin:
         app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_origin], allow_credentials=False,
-                           allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type"])
+                           allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type"])
     app.include_router(create_router(store, authenticate))
     app.include_router(create_advisory_router(store, authenticate, settings.llm))
 

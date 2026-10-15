@@ -160,3 +160,88 @@ class FreshnessStoreTests(unittest.TestCase):
         self.assertEqual(len(limited), 1)
         self.assertEqual(limited[0]["event_id"], "m3")
 
+    def test_webhook_registration_ssrf_and_signed_dispatch(self):
+        from app.services.webhook_dispatcher import verify_webhook_signature
+
+        # Reject non-HTTPS, localhost, private IPs, and short secrets
+        for bad_url in [
+            "http://alerts.example.com/hook",
+            "https://localhost/hook",
+            "https://127.0.0.1/hook",
+            "https://10.0.0.5/hook",
+            "https://169.254.169.254/latest/meta-data",
+            "https:// internal.local/hook",
+            "https://user:pass@alerts.example.com/hook",
+        ]:
+            with self.assertRaises(ValueError):
+                self.store.register_webhook("risk", bad_url, ("opened",), "valid-signing-phrase", "operator", BASE)
+        with self.assertRaises(ValueError):
+            self.store.register_webhook("risk", "https://alerts.example.com/hook", ("opened",), "short", "operator", BASE)
+
+        # Register valid webhook and verify secret is never returned or logged in audit
+        hook = self.store.register_webhook(
+            "risk",
+            "https://alerts.example.com/freshness-hook",
+            ("opened", "resolved"),
+            "hmac-signing-phrase-one",
+            "operator",
+            BASE,
+        )
+        self.assertNotIn("signing_secret", hook)
+        self.assertEqual(len(self.store.webhooks("risk")), 1)
+        self.assertNotIn("hmac-signing-phrase-one", str(self.store.audit("risk")))
+
+        # Duplicate endpoint for same feature set raises ConflictError
+        with self.assertRaises(ConflictError):
+            self.store.register_webhook(
+                "risk",
+                "https://alerts.example.com/freshness-hook",
+                ("opened",),
+                "hmac-signing-phrase-one",
+                "operator",
+                BASE,
+            )
+
+        # Evaluate opens 2 missing incidents and dispatches 2 signed webhooks
+        dispatched = []
+
+        def fake_sender(url: str, body: bytes, headers: dict[str, str]) -> tuple[int, str]:
+            dispatched.append((url, body, headers))
+            return 202, "HTTP 202"
+
+        self.store.evaluate("risk", "operator", BASE, webhook_sender=fake_sender)
+        self.assertEqual(len(dispatched), 2)
+        for url, body, headers in dispatched:
+            self.assertEqual(url, "https://alerts.example.com/freshness-hook")
+            self.assertEqual(headers["X-Freshness-Event"], "incident.opened")
+            self.assertTrue(
+                verify_webhook_signature(body, "hmac-signing-phrase-one", headers["X-Freshness-Signature"])
+            )
+
+        deliveries = self.store.webhook_deliveries("risk")
+        self.assertEqual(len(deliveries), 2)
+        self.assertTrue(all(d["status"] == "delivered" and d["status_code"] == 202 for d in deliveries))
+
+        # Failing webhook sender records failed delivery without rolling back incident recovery
+        self.store.record_materialization(self.event(event_id="rec-1", age=10), "ingestor", BASE + timedelta(seconds=1))
+
+        def failing_sender(url: str, body: bytes, headers: dict[str, str]) -> tuple[int, str]:
+            return 503, "HTTP 503"
+
+        _, incidents, transitions = self.store.evaluate(
+            "risk", "operator", BASE + timedelta(seconds=1), webhook_sender=failing_sender
+        )
+        self.assertEqual(len(transitions), 1)
+        self.assertEqual(transitions[0].action, "resolved")
+        latest_deliveries = self.store.webhook_deliveries("risk", limit=1)
+        self.assertEqual(latest_deliveries[0]["action"], "resolved")
+        self.assertEqual(latest_deliveries[0]["status"], "failed")
+        self.assertEqual(latest_deliveries[0]["status_code"], 503)
+
+        # Delete webhook
+        self.store.delete_webhook("risk", hook["webhook_id"], "operator", BASE + timedelta(seconds=2))
+        self.assertEqual(self.store.webhooks("risk"), [])
+        with self.assertRaises(NotFoundError):
+            self.store.delete_webhook("risk", hook["webhook_id"], "operator", BASE + timedelta(seconds=2))
+
+

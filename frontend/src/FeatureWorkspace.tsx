@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FeatureApi, Principal, Policy, Evaluation, Incident, TimelineEvent, AuditEvent, Page, MaterializationRecord } from './feature-api'
+import type { FeatureApi, Principal, Policy, Evaluation, Incident, TimelineEvent, AuditEvent, Page, MaterializationRecord, WebhookSubscription, WebhookDelivery } from './feature-api'
 import { PolicyEditor } from './PolicyEditor'
 import { MaterializationForm } from './MaterializationForm'
 import { BatchImportForm } from './BatchImportForm'
 import { AdvisoryPanel } from './AdvisoryPanel'
+import { WebhookPanel } from './WebhookPanel'
 
 export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: Principal}) {
   const [policies, setPolicies] = useState<Policy[]>([])
@@ -12,6 +13,8 @@ export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: 
   const [health, setHealth] = useState<Evaluation | null>(null)
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [materializations, setMaterializations] = useState<MaterializationRecord[]>([])
+  const [webhooks, setWebhooks] = useState<WebhookSubscription[]>([])
+  const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDelivery[]>([])
   const [timeline, setTimeline] = useState<Page<TimelineEvent>>({events:[], next_cursor:0})
   const [audit, setAudit] = useState<Page<AuditEvent>>({events:[], next_cursor:0})
   const [error, setError] = useState('')
@@ -29,13 +32,15 @@ export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: 
     try {
       const list = await api.policies()
       const feature = name || list[0]?.feature_set || ''
-      if (!feature) {if(id===requestId.current){setPolicies(list);setSelected('');setHealth(null);setMaterializations([])};return}
-      const [evaluation, active, events, auditEvents, matEvents] = await Promise.all([
+      if (!feature) {if(id===requestId.current){setPolicies(list);setSelected('');setHealth(null);setMaterializations([]);setWebhooks([]);setWebhookDeliveries([])};return}
+      const [evaluation, active, events, auditEvents, matEvents, hookSubs, hookDeliveries] = await Promise.all([
         api.health(feature), api.incidents(feature), api.timeline(feature,0,25), admin ? api.audit(feature,0,25) : Promise.resolve({events:[],next_cursor:0}),
         typeof api.materializations === 'function' ? api.materializations(feature, undefined, 25).catch(() => []) : Promise.resolve([]),
+        typeof api.webhooks === 'function' ? api.webhooks(feature).catch(() => []) : Promise.resolve([]),
+        typeof api.webhookDeliveries === 'function' ? api.webhookDeliveries(feature, 25).catch(() => []) : Promise.resolve([]),
       ])
       if (id !== requestId.current) return
-      setPolicies(list);setSelected(feature);setHealth(evaluation);setIncidents(active);setTimeline(events);setAudit(auditEvents);setMaterializations(matEvents)
+      setPolicies(list);setSelected(feature);setHealth(evaluation);setIncidents(active);setTimeline(events);setAudit(auditEvents);setMaterializations(matEvents);setWebhooks(hookSubs);setWebhookDeliveries(hookDeliveries)
     } catch (error) {if(id===requestId.current)setError(error instanceof Error ? error.message : 'Unable to load feature sets')}
   }, [api,admin])
 
@@ -128,6 +133,7 @@ export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: 
           <p>No materialization events recorded.</p>
         )}
       </section>
+      <WebhookPanel key={selected+":webhooks"} api={api} feature={selected} operator={operator} webhooks={webhooks} deliveries={webhookDeliveries} onSaved={()=>refresh(selected)} />
       <section><h2>Incident timeline</h2><ol>{timeline.events.map(e=><li key={e.sequence}>{e.occurred_at}: {e.partition_name} {e.condition} incident {e.action}</li>)}</ol><button disabled={!timeline.events.length} onClick={()=>void loadMore('timeline')}>Load more timeline entries</button></section>
       {operator && <PolicyEditor api={api} policy={policy} onSaved={refresh}/>}
       {admin && <><section><h2>Audit log</h2><ol>{audit.events.map(e=><li key={e.sequence}>{e.occurred_at}: {e.actor} — {e.action}<pre>{e.detail_json}</pre></li>)}</ol><button disabled={!audit.events.length} onClick={()=>void loadMore('audit')}>Load more audit entries</button></section></>}
