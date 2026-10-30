@@ -157,10 +157,11 @@ def create_router(
     def list_webhook_deliveries(
         feature_set: str,
         limit: int = Query(default=50, ge=1, le=500),
+        after: int = Query(default=0, ge=0),
         principal: Principal = Depends(authenticate),
     ):
         require_role(principal, {"viewer", "operator", "admin"})
-        return {"deliveries": invoke_domain(store.webhook_deliveries, feature_set, limit)}
+        return {"deliveries": invoke_domain(store.webhook_deliveries, feature_set, limit, after)}
 
     @router.get("/features/{feature_set}/export")
     def export_snapshot(feature_set: str, principal: Principal = Depends(authenticate)):
