@@ -445,20 +445,34 @@ class FreshnessStore:
                 )
         return results
 
-    def webhook_deliveries(self, feature_set: str, limit: int = 50) -> list[dict]:
+    def webhook_deliveries(self, feature_set: str, limit: int = 50, after: int = 0) -> list[dict]:
         if not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")
+        if after < 0:
+            raise ValueError("after must be non-negative")
         with self.connection() as conn:
             if not conn.execute("SELECT 1 FROM feature_policies WHERE feature_set=?", (feature_set,)).fetchone():
                 raise NotFoundError("feature policy not found")
-            rows = conn.execute(
-                """SELECT delivery_id,webhook_id,feature_set,incident_id,partition_name,
-                          condition,action,target_url,signature,status,status_code,detail,occurred_at
-                   FROM webhook_deliveries
-                   WHERE feature_set=?
-                   ORDER BY delivery_id DESC LIMIT ?""",
-                (feature_set, limit),
-            )
+            if after == 0:
+                # Default: most recent first (backward compatible)
+                rows = conn.execute(
+                    """SELECT delivery_id,webhook_id,feature_set,incident_id,partition_name,
+                              condition,action,target_url,signature,status,status_code,detail,occurred_at
+                       FROM webhook_deliveries
+                       WHERE feature_set=?
+                       ORDER BY delivery_id DESC LIMIT ?""",
+                    (feature_set, limit),
+                )
+            else:
+                # Cursor pagination: older than 'after', descending for next page
+                rows = conn.execute(
+                    """SELECT delivery_id,webhook_id,feature_set,incident_id,partition_name,
+                              condition,action,target_url,signature,status,status_code,detail,occurred_at
+                       FROM webhook_deliveries
+                       WHERE feature_set=? AND delivery_id < ?
+                       ORDER BY delivery_id DESC LIMIT ?""",
+                    (feature_set, after, limit),
+                )
             return [
                 {
                     "delivery_id": r["delivery_id"],

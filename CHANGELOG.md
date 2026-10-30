@@ -1,6 +1,13 @@
 # Changelog
 
+## 1.5.0 — work-in-progress checkpoint
+
+Partial code published for continued development. Known issues: STATUS.md.
+
 ## 1.4.0 — work-in-progress checkpoint
+
+- Added cursor-based pagination (`after` parameter) to webhook deliveries endpoint for consistency with timeline and audit endpoints.
+- Backward compatible: default behavior returns most recent deliveries first.
 
 Partial code published for continued development. Known issues: STATUS.md.
 

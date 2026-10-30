@@ -74,8 +74,10 @@ export class FeatureApi {
   deleteWebhook(feature: string, webhookId: string): Promise<{ deleted: boolean; webhook_id: string }> {
     return this.request(`/features/${encodeURIComponent(feature)}/webhooks/${encodeURIComponent(webhookId)}`, 'DELETE')
   }
-  async webhookDeliveries(feature: string, limit = 50): Promise<WebhookDelivery[]> {
-    return (await this.request<{ deliveries: WebhookDelivery[] }>(`/features/${encodeURIComponent(feature)}/webhooks/deliveries?limit=${limit}`)).deliveries
+  async webhookDeliveries(feature: string, limit = 50, after = 0): Promise<WebhookDelivery[]> {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (after > 0) params.set('after', String(after))
+    return (await this.request<{ deliveries: WebhookDelivery[] }>(`/features/${encodeURIComponent(feature)}/webhooks/deliveries?${params}`)).deliveries
   }
   export(feature: string): Promise<FeatureExport> {
     return this.request(`/features/${encodeURIComponent(feature)}/export`)

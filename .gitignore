@@ -14,3 +14,4 @@ coverage/
 frontend/tests/react-app.js
 .antigravitycli/
 .omp/
+venv/
