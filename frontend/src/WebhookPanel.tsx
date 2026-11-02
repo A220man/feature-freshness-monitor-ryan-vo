@@ -125,6 +125,7 @@ export function WebhookPanel({
               <th>Destination</th>
               <th>Delivery status</th>
               <th>Signature</th>
+              {operator && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -135,6 +136,29 @@ export function WebhookPanel({
                 <td>{d.target_url}</td>
                 <td>{d.status}{d.status_code ? ` (${d.status_code})` : ''}</td>
                 <td><code>{d.signature.slice(0, 20)}…</code></td>
+                {operator && d.status === 'failed' && (
+                  <td>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={async () => {
+                        setPending(true); setError(''); setStatus('')
+                        try {
+                          await api.retryWebhookDelivery(feature, d.delivery_id)
+                          setStatus('Webhook delivery retried.')
+                          onSaved()
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Retry failed')
+                        } finally {
+                          setPending(false)
+                        }
+                      }}
+                    >
+                      {pending ? 'Retrying…' : 'Retry'}
+                    </button>
+                  </td>
+                )}
+                {operator && d.status !== 'failed' && <td/>}
               </tr>
             ))}
           </tbody>

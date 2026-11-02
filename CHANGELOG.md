@@ -1,9 +1,15 @@
 # Changelog
 
-## 1.5.0 — work-in-progress checkpoint
+## 1.6.0 — work-in-progress checkpoint
 
 Partial code published for continued development. Known issues: STATUS.md.
 
+## 1.5.0 — work-in-progress checkpoint
+
+- Added webhook delivery retry endpoint (`POST /api/features/{feature_set}/webhooks/deliveries/{delivery_id}/retry`) allowing operators to re-dispatch failed webhook notifications with original payload and HMAC signature.
+- Retry button surfaced in operator workspace for failed deliveries; records new delivery attempt with audit trail.
+
+Partial code published for continued development. Known issues: STATUS.md.
 ## 1.4.0 — work-in-progress checkpoint
 
 - Added cursor-based pagination (`after` parameter) to webhook deliveries endpoint for consistency with timeline and audit endpoints.
