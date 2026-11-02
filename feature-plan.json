@@ -169,7 +169,8 @@
       "acceptance": [
         "Register, list, and delete HTTPS webhook alert subscriptions with SSRF host validation",
         "Dispatch HMAC-SHA256 signed HTTP webhook notifications to registered endpoints when incidents open or resolve",
-        "Record webhook delivery outcomes and surface webhook management and delivery history in the operator workspace"
+        "Record webhook delivery outcomes and surface webhook management and delivery history in the operator workspace",
+        "Retry failed webhook deliveries with original payload and signing secret"
       ],
       "implementation": [
         "backend/app/services/webhook_dispatcher.py",

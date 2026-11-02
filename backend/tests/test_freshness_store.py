@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+import json
 from app.domain.freshness import FreshnessPolicy, Materialization
 from app.services.freshness_store import FreshnessStore, ConflictError, NotFoundError
 
@@ -244,4 +245,65 @@ class FreshnessStoreTests(unittest.TestCase):
         with self.assertRaises(NotFoundError):
             self.store.delete_webhook("risk", hook["webhook_id"], "operator", BASE + timedelta(seconds=2))
 
+    def test_webhook_retry_failed_delivery(self):
+        from app.services.webhook_dispatcher import verify_webhook_signature
+
+        # Register valid webhook
+        hook = self.store.register_webhook(
+            "risk",
+            "https://alerts.example.com/freshness-hook",
+            ("opened", "resolved"),
+            "hmac-signing-phrase-one",
+            "operator",
+            BASE,
+        )
+
+        # First evaluation with failing sender - records failed deliveries
+        def failing_sender(url: str, body: bytes, headers: dict[str, str]) -> tuple[int, str]:
+            return 503, "HTTP 503"
+
+        self.store.evaluate("risk", "operator", BASE, webhook_sender=failing_sender)
+        failed_deliveries = self.store.webhook_deliveries("risk")
+        self.assertEqual(len(failed_deliveries), 2)
+        self.assertTrue(all(d["status"] == "failed" for d in failed_deliveries))
+
+        # Retry one failed delivery with successful sender
+        def success_sender(url: str, body: bytes, headers: dict[str, str]) -> tuple[int, str]:
+            return 202, "HTTP 202"
+
+        delivery_to_retry = failed_deliveries[0]
+        retried = self.store.retry_webhook_delivery("risk", delivery_to_retry["delivery_id"], "operator", BASE + timedelta(seconds=1), sender=success_sender)
+        self.assertEqual(retried["status"], "delivered")
+        self.assertEqual(retried["status_code"], 202)
+        # Verify signature of retried payload matches
+        self.assertTrue(retried["signature"].startswith("sha256="))
+        # Verify original delivery still exists and is failed
+        all_deliveries = self.store.webhook_deliveries("risk")
+        self.assertEqual(len(all_deliveries), 3)
+        original = [d for d in all_deliveries if d["delivery_id"] == delivery_to_retry["delivery_id"]][0]
+        self.assertEqual(original["status"], "failed")
+        # New delivery should be delivered
+        new_delivery = [d for d in all_deliveries if d["delivery_id"] == retried["delivery_id"]][0]
+        self.assertEqual(new_delivery["status"], "delivered")
+
+        # Audit log should contain retry action
+        audit = self.store.audit("risk")
+        retry_audit = [a for a in audit if a["action"] == "webhook.retry"]
+        self.assertEqual(len(retry_audit), 1)
+        import json as _json
+        detail = _json.loads(retry_audit[0]["detail_json"])
+        self.assertEqual(detail["original_delivery_id"], delivery_to_retry["delivery_id"])
+        self.assertEqual(detail["new_delivery_id"], retried["delivery_id"])
+
+        # Cannot retry a successful delivery
+        with self.assertRaises(NotFoundError):
+            self.store.retry_webhook_delivery("risk", retried["delivery_id"], "operator", BASE + timedelta(seconds=2), sender=success_sender)
+
+        # Cannot retry non-existent delivery
+        with self.assertRaises(NotFoundError):
+            self.store.retry_webhook_delivery("risk", 99999, "operator", BASE + timedelta(seconds=2), sender=success_sender)
+
+        # Cannot retry for wrong feature set
+        with self.assertRaises(NotFoundError):
+            self.store.retry_webhook_delivery("other", delivery_to_retry["delivery_id"], "operator", BASE + timedelta(seconds=2), sender=success_sender)
 

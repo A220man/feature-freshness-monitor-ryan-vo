@@ -115,6 +115,7 @@ Acceptance:
 - Register, list, and delete HTTPS webhook alert subscriptions with SSRF host validation
 - Dispatch HMAC-SHA256 signed HTTP webhook notifications to registered endpoints when incidents open or resolve
 - Record webhook delivery outcomes and surface webhook management and delivery history in the operator workspace
+- Retry failed webhook deliveries with original payload and signing secret
 
 Implementation: `backend/app/services/webhook_dispatcher.py`, `backend/app/services/freshness_store.py`, `backend/app/api/features.py`, `frontend/src/feature-api.ts`, `frontend/src/WebhookPanel.tsx`, `frontend/src/FeatureWorkspace.tsx`
 

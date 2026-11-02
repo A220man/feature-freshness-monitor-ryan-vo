@@ -445,6 +445,80 @@ class FreshnessStore:
                 )
         return results
 
+    def retry_webhook_delivery(
+        self,
+        feature_set: str,
+        delivery_id: int,
+        actor: str,
+        at: datetime,
+        sender: WebhookSender = default_http_sender,
+    ) -> dict:
+        """Retry a failed webhook delivery by delivery_id."""
+        with self.connection(write=True) as conn:
+            if not conn.execute("SELECT 1 FROM feature_policies WHERE feature_set=?", (feature_set,)).fetchone():
+                raise NotFoundError("feature policy not found")
+            row = conn.execute(
+                """SELECT d.webhook_id,d.feature_set,d.incident_id,d.partition_name,d.condition,d.action,
+                          d.target_url,s.signing_secret,d.payload_json
+                   FROM webhook_deliveries d
+                   JOIN webhook_subscriptions s ON d.webhook_id = s.webhook_id
+                   WHERE d.delivery_id=? AND d.feature_set=? AND d.status='failed'""",
+                (delivery_id, feature_set),
+            ).fetchone()
+            if not row:
+                raise NotFoundError("failed webhook delivery not found or not retryable")
+
+        payload = json.loads(row["payload_json"])
+        payload_json, signature, status, status_code, detail = dispatch_webhook(
+            row["target_url"], row["signing_secret"], payload, sender
+        )
+        occurred_stamp = stamp(at)
+        with self.connection(write=True) as conn:
+            cur = conn.execute(
+                """INSERT INTO webhook_deliveries(
+                    webhook_id,feature_set,incident_id,partition_name,condition,action,
+                    target_url,payload_json,signature,status,status_code,detail,occurred_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    row["webhook_id"],
+                    feature_set,
+                    row["incident_id"],
+                    row["partition_name"],
+                    row["condition"],
+                    row["action"],
+                    row["target_url"],
+                    payload_json,
+                    signature,
+                    status,
+                    status_code,
+                    detail,
+                    occurred_stamp,
+                ),
+            )
+            self._audit(
+                conn,
+                actor,
+                "webhook.retry",
+                feature_set,
+                at,
+                {"original_delivery_id": delivery_id, "new_delivery_id": cur.lastrowid, "target_url": row["target_url"], "status": status},
+            )
+        return {
+            "delivery_id": cur.lastrowid,
+            "webhook_id": row["webhook_id"],
+            "feature_set": feature_set,
+            "incident_id": row["incident_id"],
+            "partition": row["partition_name"],
+            "condition": row["condition"],
+            "action": row["action"],
+            "target_url": row["target_url"],
+            "signature": signature,
+            "status": status,
+            "status_code": status_code,
+            "detail": detail,
+            "occurred_at": occurred_stamp,
+        }
+
     def webhook_deliveries(self, feature_set: str, limit: int = 50, after: int = 0) -> list[dict]:
         if not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")

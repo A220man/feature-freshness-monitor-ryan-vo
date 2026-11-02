@@ -162,6 +162,21 @@ def create_router(
     ):
         require_role(principal, {"viewer", "operator", "admin"})
         return {"deliveries": invoke_domain(store.webhook_deliveries, feature_set, limit, after)}
+    @router.post("/features/{feature_set}/webhooks/deliveries/{delivery_id}/retry")
+    def retry_webhook_delivery(
+        feature_set: str,
+        delivery_id: int,
+        principal: Principal = Depends(authenticate),
+    ):
+        require_role(principal, {"operator", "admin"})
+        return invoke_domain(
+            store.retry_webhook_delivery,
+            feature_set,
+            delivery_id,
+            principal.subject,
+            clock(),
+            webhook_sender,
+        )
 
     @router.get("/features/{feature_set}/export")
     def export_snapshot(feature_set: str, principal: Principal = Depends(authenticate)):

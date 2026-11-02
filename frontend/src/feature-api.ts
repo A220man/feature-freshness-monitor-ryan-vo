@@ -79,6 +79,9 @@ export class FeatureApi {
     if (after > 0) params.set('after', String(after))
     return (await this.request<{ deliveries: WebhookDelivery[] }>(`/features/${encodeURIComponent(feature)}/webhooks/deliveries?${params}`)).deliveries
   }
+  async retryWebhookDelivery(feature: string, deliveryId: number): Promise<WebhookDelivery> {
+    return this.request(`/features/${encodeURIComponent(feature)}/webhooks/deliveries/${deliveryId}/retry`, 'POST')
+  }
   export(feature: string): Promise<FeatureExport> {
     return this.request(`/features/${encodeURIComponent(feature)}/export`)
   }
