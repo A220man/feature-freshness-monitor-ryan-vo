@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Callable, FrozenSet, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
-from app.domain.freshness import FreshnessPolicy, Materialization, identifier
+from app.domain.freshness import FreshnessPolicy, Materialization, identifier, IncidentTransition, compute_sla_compliance, SlaReport
 from app.services.freshness_store import FreshnessStore, NotFoundError, ConflictError
 from app.services.webhook_dispatcher import WebhookSender, default_http_sender
 
@@ -219,6 +219,52 @@ def create_router(
     def audit(feature_set: str, after: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=1000), principal: Principal = Depends(authenticate)):
         require_role(principal, {"admin"})
         rows = store.audit(feature_set, after, limit)
-        return {"events": rows, "next_cursor": rows[-1]["sequence"] if rows else after}
+    @router.get("/features/{feature_set}/sla")
+    def sla_compliance(
+        feature_set: str,
+        window_start: str = Query(..., description="Window start (ISO 8601, inclusive)"),
+        window_end: str = Query(..., description="Window end (ISO 8601, exclusive)"),
+        principal: Principal = Depends(authenticate),
+    ):
+        require_role(principal, {"viewer", "operator", "admin"})
+        try:
+            ws = datetime.fromisoformat(window_start.replace("Z", "+00:00"))
+            we = datetime.fromisoformat(window_end.replace("Z", "+00:00"))
+        except ValueError as e:
+            raise HTTPException(422, f"Invalid timestamp format: {e}") from e
+        # Get policy for expected partitions
+        policy_info = invoke_domain(store.policy_by_name, feature_set)
+        expected_partitions = tuple(policy_info["expected_partitions"])
+        # Get all timeline events
+        timeline_rows = store.timeline_all(feature_set)
+        timeline_events = [
+            IncidentTransition(
+                r["incident_id"],
+                r["action"],
+                datetime.fromisoformat(r["occurred_at"]),
+                r["feature_set"],
+                r["partition_name"],
+                r["condition"],
+            )
+            for r in timeline_rows
+        ]
+        report = invoke_domain(compute_sla_compliance, timeline_events, ws, we, expected_partitions)
+        # Convert to serializable format
+        return {
+            "feature_set": report.feature_set,
+            "window_start": report.window_start.isoformat(),
+            "window_end": report.window_end.isoformat(),
+            "overall_compliance_ratio": report.overall_compliance_ratio,
+            "partitions": [
+                {
+                    "partition": p.partition,
+                    "total_breach_seconds": p.total_breach_seconds,
+                    "window_seconds": p.window_seconds,
+                    "compliance_ratio": p.compliance_ratio,
+                    "incident_count": p.incident_count,
+                }
+                for p in report.partitions
+            ],
+        }
 
     return router

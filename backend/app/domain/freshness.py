@@ -10,6 +10,7 @@ from hashlib import sha256
 from math import isfinite
 from typing import Iterable, Literal
 
+
 Status = Literal["fresh", "stale", "missing"]
 
 
@@ -204,4 +205,143 @@ def reconcile_incidents(evaluation: FreshnessEvaluation, incidents: Iterable[Inc
             incident_id = sha256(key.encode()).hexdigest()[:24]
             records.append(Incident(incident_id, evaluation.feature_set, health.partition, condition, at, at))
             transitions.append(IncidentTransition(incident_id, "opened", at, evaluation.feature_set, health.partition, condition))
-    return tuple(records), tuple(transitions)
+
+
+@dataclass(frozen=True)
+class SlaCompliance:
+    """SLA compliance metrics for a single partition over an evaluation window."""
+    feature_set: str
+    partition: str
+    window_start: datetime
+    window_end: datetime
+    total_breach_seconds: float
+    window_seconds: float
+    compliance_ratio: float
+    incident_count: int
+
+    def breach_duration(self) -> timedelta:
+        """Return total breach duration as timedelta."""
+        return timedelta(seconds=self.total_breach_seconds)
+
+    def window_duration(self) -> timedelta:
+        """Return evaluation window duration as timedelta."""
+        return timedelta(seconds=self.window_seconds)
+
+
+@dataclass(frozen=True)
+class SlaReport:
+    """Aggregate SLA compliance report for a feature set over an evaluation window."""
+    feature_set: str
+    window_start: datetime
+    window_end: datetime
+    partitions: tuple[SlaCompliance, ...]
+    overall_compliance_ratio: float
+
+
+def compute_sla_compliance(
+    timeline_events: Iterable[IncidentTransition],
+    window_start: datetime,
+    window_end: datetime,
+    expected_partitions: tuple[str, ...],
+) -> SlaReport:
+    """Compute per-partition SLA compliance from incident timeline events.
+
+    Args:
+        timeline_events: Incident transitions (opened/resolved) for the feature set.
+        window_start: Start of evaluation window (inclusive).
+        window_end: End of evaluation window (exclusive).
+        expected_partitions: Partitions defined in the freshness policy.
+
+    Returns:
+        SlaReport with per-partition and overall compliance metrics.
+
+    The function pairs opened/resolved events per incident_id to compute
+    breach durations. Open incidents at window_end are treated as breaching
+    until window_end. Partitions with no incidents have 100% compliance.
+    """
+    ws = utc(window_start)
+    we = utc(window_end)
+    if ws >= we:
+        raise ValueError("window_start must be before window_end")
+
+    window_seconds = (we - ws).total_seconds()
+    if window_seconds <= 0:
+        raise ValueError("evaluation window must have positive duration")
+
+    # Group events by incident_id
+    incidents: dict[str, list[IncidentTransition]] = {}
+    for event in timeline_events:
+        event_utc = utc(event.occurred_at)
+        # Only consider events within the window or that affect window
+        if event_utc >= we:
+            continue
+        incidents.setdefault(event.incident_id, []).append(event)
+
+    # Compute breach duration per partition
+    partition_breach: dict[str, float] = {p: 0.0 for p in expected_partitions}
+    partition_incident_count: dict[str, int] = {p: 0 for p in expected_partitions}
+
+    for incident_id, events in incidents.items():
+        if not events:
+            continue
+        # Sort by occurred_at
+        events = sorted(events, key=lambda e: utc(e.occurred_at))
+        partition = events[0].partition
+        condition = events[0].condition
+
+        # Pair opened/resolved events
+        opened_at: datetime | None = None
+        for event in events:
+            event_time = utc(event.occurred_at)
+            if event.action == "opened":
+                if opened_at is not None:
+                    # Duplicate opened without resolve - treat as continuous
+                    pass
+                opened_at = max(event_time, ws)
+            elif event.action == "resolved" and opened_at is not None:
+                resolved_at = min(event_time, we)
+                if resolved_at > opened_at:
+                    partition_breach[partition] = partition_breach.get(partition, 0.0) + (resolved_at - opened_at).total_seconds()
+                    partition_incident_count[partition] = partition_incident_count.get(partition, 0) + 1
+                opened_at = None
+
+        # If still open at window end, count breach until window_end
+        if opened_at is not None and opened_at < we:
+            partition_breach[partition] = partition_breach.get(partition, 0.0) + (we - opened_at).total_seconds()
+            partition_incident_count[partition] = partition_incident_count.get(partition, 0) + 1
+
+    # Build per-partition compliance
+    partition_compliance = []
+    feature_set = ""
+    # Extract feature_set from first event
+    for event in timeline_events:
+        feature_set = event.feature_set
+        break
+    for partition in expected_partitions:
+        breach_seconds = partition_breach.get(partition, 0.0)
+        # Cap breach at window duration
+        breach_seconds = min(breach_seconds, window_seconds)
+        compliance = max(0.0, 1.0 - (breach_seconds / window_seconds))
+        partition_compliance.append(
+            SlaCompliance(
+                feature_set=feature_set,
+                partition=partition,
+                window_start=ws,
+                window_end=we,
+                total_breach_seconds=breach_seconds,
+                window_seconds=window_seconds,
+                compliance_ratio=compliance,
+                incident_count=partition_incident_count.get(partition, 0),
+            )
+        )
+
+    # Overall compliance is average of partition compliance
+    overall = sum(p.compliance_ratio for p in partition_compliance) / len(partition_compliance) if partition_compliance else 1.0
+
+    return SlaReport(
+        feature_set=feature_set,
+        window_start=ws,
+        window_end=we,
+        partitions=tuple(partition_compliance),
+        overall_compliance_ratio=overall,
+    )

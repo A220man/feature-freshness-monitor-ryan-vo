@@ -128,4 +128,53 @@ class FreshnessDomainTests(unittest.TestCase):
     def test_unrepresentable_deadline_is_a_validation_error(self):
         policy = FreshnessPolicy("risk", ("us",), 1e300)
         with self.assertRaisesRegex(ValueError, "timestamp range"):
-            evaluate(policy, [event()], BASE)
+
+    def test_sla_compliance_computes_breach_durations_and_ratios(self):
+        from app.domain.freshness import IncidentTransition, compute_sla_compliance
+        policy = FreshnessPolicy("risk", ("us", "eu"), 60, 10)
+        window_start = BASE
+        window_end = BASE + timedelta(hours=1)
+        # Create timeline events: us opened at BASE+10min, resolved at BASE+30min (20min breach)
+        # eu opened at BASE+20min, still open at window_end (40min breach)
+        transitions = [
+            IncidentTransition("inc-1", "opened", BASE + timedelta(minutes=10), "risk", "us", "stale"),
+            IncidentTransition("inc-1", "resolved", BASE + timedelta(minutes=30), "risk", "us", "stale"),
+            IncidentTransition("inc-2", "opened", BASE + timedelta(minutes=20), "risk", "eu", "missing"),
+            # eu incident still open at window_end
+        ]
+        report = compute_sla_compliance(transitions, window_start, window_end, ("us", "eu"))
+        self.assertEqual(report.feature_set, "risk")
+        self.assertEqual(report.window_start, window_start)
+        self.assertEqual(report.window_end, window_end)
+        # us: 20 min breach = 1200s out of 3600s = 66.67% compliance
+        us = next(p for p in report.partitions if p.partition == "us")
+        self.assertAlmostEqual(us.total_breach_seconds, 1200.0, places=1)
+        self.assertAlmostEqual(us.compliance_ratio, 1.0 - 1200.0/3600.0, places=3)
+        self.assertEqual(us.incident_count, 1)
+        # eu: 40 min breach = 2400s out of 3600s = 33.33% compliance
+        eu = next(p for p in report.partitions if p.partition == "eu")
+        self.assertAlmostEqual(eu.total_breach_seconds, 2400.0, places=1)
+        self.assertAlmostEqual(eu.compliance_ratio, 1.0 - 2400.0/3600.0, places=3)
+        self.assertEqual(eu.incident_count, 1)
+        # Overall compliance = average
+        self.assertAlmostEqual(report.overall_compliance_ratio, (us.compliance_ratio + eu.compliance_ratio) / 2, places=3)
+
+    def test_sla_compliance_no_incidents_is_100_percent(self):
+        from app.domain.freshness import compute_sla_compliance
+        window_start = BASE
+        window_end = BASE + timedelta(hours=1)
+        report = compute_sla_compliance([], window_start, window_end, ("us", "eu"))
+        for p in report.partitions:
+            self.assertEqual(p.total_breach_seconds, 0.0)
+            self.assertEqual(p.compliance_ratio, 1.0)
+            self.assertEqual(p.incident_count, 0)
+        self.assertEqual(report.overall_compliance_ratio, 1.0)
+
+    def test_sla_compliance_validation(self):
+        from app.domain.freshness import compute_sla_compliance
+        window_start = BASE
+        window_end = BASE + timedelta(hours=1)
+        with self.assertRaisesRegex(ValueError, "window_start must be before window_end"):
+            compute_sla_compliance([], window_end, window_start, ("us",))
+        with self.assertRaisesRegex(ValueError, "positive duration"):
+            compute_sla_compliance([], BASE, BASE, ("us",))

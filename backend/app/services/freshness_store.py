@@ -572,6 +572,13 @@ class FreshnessStore:
         with self.connection() as conn:
             return [dict(r) for r in conn.execute("SELECT * FROM incident_timeline WHERE feature_set=? AND sequence>? ORDER BY sequence LIMIT ?", (feature_set, after, limit))]
 
+    def timeline_all(self, feature_set: str) -> list[dict]:
+        """Fetch all incident timeline events for a feature set (for SLA analytics)."""
+        with self.connection() as conn:
+            if not conn.execute("SELECT 1 FROM feature_policies WHERE feature_set=?", (feature_set,)).fetchone():
+                raise NotFoundError("feature policy not found")
+            return [dict(r) for r in conn.execute("SELECT * FROM incident_timeline WHERE feature_set=? ORDER BY sequence", (feature_set,))]
+
     def audit(self, feature_set: str, after: int = 0, limit: int = 100) -> list[dict]:
         if after < 0 or not 1 <= limit <= 1000:
             raise ValueError("invalid audit pagination")

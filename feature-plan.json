@@ -189,12 +189,23 @@
     {
       "id": "sla-compliance-analytics",
       "title": "Partition SLA Compliance & Breach Duration Analytics",
-      "status": "planned",
+      "status": "in_progress",
       "acceptance": [
         "Compute per-partition incident breach durations and SLA compliance ratios across evaluation windows"
       ],
-      "implementation": [],
-      "tests": []
+      "implementation": [
+        "backend/app/domain/freshness.py",
+        "backend/app/services/freshness_store.py",
+        "backend/app/api/features.py",
+        "frontend/src/feature-api.ts",
+        "frontend/src/SlaPanel.tsx",
+        "frontend/src/FeatureWorkspace.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_freshness_domain.py",
+        "backend/tests/test_features_api.py",
+        "frontend/src/workflows.test.tsx"
+      ]
     }
   ]
 }
