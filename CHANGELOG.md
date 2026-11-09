@@ -1,6 +1,22 @@
 # Changelog
 
+## 1.8.0 — work-in-progress checkpoint
+
+Partial code published for continued development. Known issues: STATUS.md.
+
 ## 1.7.0 — work-in-progress checkpoint
+
+- Added cursor-based pagination for webhook deliveries in the operator workspace (WebhookPanel)
+- "Load more deliveries" button allows operators to page through webhook delivery history
+- Webhook delivery cursor uses `delivery_id` for correct pagination consistency with backend API
+- Started SLA compliance analytics feature (in_progress):
+  - New domain types `SlaCompliance` and `SlaReport` for per-partition breach duration and compliance ratio computation
+  - `compute_sla_compliance()` function pairing opened/resolved incident transitions to calculate breach durations
+  - `timeline_all()` store method fetching all incident timeline events for analytics
+  - New API endpoint `GET /api/features/{feature_set}/sla` with `window_start` and `window_end` parameters
+  - Frontend `SlaPanel` component with datetime-local window picker and results table
+  - API types `SlaCompliancePartition` and `SlaReport` in `feature-api.ts`
+  - Domain and API tests for SLA compliance calculation and endpoint
 
 Partial code published for continued development. Known issues: STATUS.md.
 

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useState, useCallback } from 'react'
 import type { FeatureApi, WebhookDelivery, WebhookSubscription } from './feature-api'
 
 export function WebhookPanel({
@@ -6,7 +6,7 @@ export function WebhookPanel({
   feature,
   operator,
   webhooks,
-  deliveries,
+  deliveries: initialDeliveries,
   onSaved,
 }: {
   api: FeatureApi
@@ -22,6 +22,27 @@ export function WebhookPanel({
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[]>(initialDeliveries)
+  const [deliveryCursor, setDeliveryCursor] = useState<number | null>(initialDeliveries.length > 0 ? initialDeliveries[initialDeliveries.length - 1].delivery_id : null)
+  const [hasMoreDeliveries, setHasMoreDeliveries] = useState(initialDeliveries.length >= 25)
+
+  const loadMoreDeliveries = useCallback(async () => {
+    if (deliveryCursor === null) return
+    setPending(true); setError(''); setStatus('')
+    try {
+      const next = await api.webhookDeliveries(feature, 25, deliveryCursor)
+      setDeliveries(prev => [...prev, ...next])
+      if (next.length > 0) {
+        setDeliveryCursor(next[next.length - 1].delivery_id)
+      }
+      setHasMoreDeliveries(next.length === 25)
+      setStatus('Loaded more deliveries.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load more deliveries')
+    } finally {
+      setPending(false)
+    }
+  }, [api, feature, deliveryCursor])
 
   async function handleRegister(event: FormEvent) {
     event.preventDefault()
@@ -29,15 +50,10 @@ export function WebhookPanel({
     const events: ('opened' | 'resolved')[] =
       eventMode === 'both' ? ['opened', 'resolved'] : [eventMode]
     try {
-      await api.registerWebhook(feature, {
-        target_url: targetUrl.trim(),
-        events,
-        signing_secret: signingSecret,
-      })
-      setTargetUrl('')
-      setSigningSecret('')
+      await api.registerWebhook(feature, { target_url: targetUrl, events, signing_secret: signingSecret })
       setStatus('Webhook endpoint registered.')
-      await onSaved()
+      setTargetUrl(''); setSigningSecret('')
+      onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to register webhook')
     } finally {
@@ -50,7 +66,7 @@ export function WebhookPanel({
     try {
       await api.deleteWebhook(feature, webhookId)
       setStatus('Webhook endpoint removed.')
-      await onSaved()
+      onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to remove webhook')
     } finally {
@@ -117,52 +133,59 @@ export function WebhookPanel({
       )}
       <h3>Recent webhook deliveries</h3>
       {deliveries.length ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Action</th>
-              <th>Partition</th>
-              <th>Destination</th>
-              <th>Delivery status</th>
-              <th>Signature</th>
-              {operator && <th>Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {deliveries.map(d => (
-              <tr key={d.delivery_id}>
-                <td>{d.action}</td>
-                <td>{d.partition}</td>
-                <td>{d.target_url}</td>
-                <td>{d.status}{d.status_code ? ` (${d.status_code})` : ''}</td>
-                <td><code>{d.signature.slice(0, 20)}…</code></td>
-                {operator && d.status === 'failed' && (
-                  <td>
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={async () => {
-                        setPending(true); setError(''); setStatus('')
-                        try {
-                          await api.retryWebhookDelivery(feature, d.delivery_id)
-                          setStatus('Webhook delivery retried.')
-                          onSaved()
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : 'Retry failed')
-                        } finally {
-                          setPending(false)
-                        }
-                      }}
-                    >
-                      {pending ? 'Retrying…' : 'Retry'}
-                    </button>
-                  </td>
-                )}
-                {operator && d.status !== 'failed' && <td/>}
+        <>
+          <table>
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Partition</th>
+                <th>Destination</th>
+                <th>Delivery status</th>
+                <th>Signature</th>
+                {operator && <th>Actions</th>}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {deliveries.map(d => (
+                <tr key={d.delivery_id}>
+                  <td>{d.action}</td>
+                  <td>{d.partition}</td>
+                  <td>{d.target_url}</td>
+                  <td>{d.status}{d.status_code ? ` (${d.status_code})` : ''}</td>
+                  <td><code>{d.signature.slice(0, 20)}…</code></td>
+                  {operator && d.status === 'failed' && (
+                    <td>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={async () => {
+                          setPending(true); setError(''); setStatus('')
+                          try {
+                            await api.retryWebhookDelivery(feature, d.delivery_id)
+                            setStatus('Webhook delivery retried.')
+                            onSaved()
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Retry failed')
+                          } finally {
+                            setPending(false)
+                          }
+                        }}
+                      >
+                        {pending ? 'Retrying…' : 'Retry'}
+                      </button>
+                    </td>
+                  )}
+                  {operator && d.status !== 'failed' && <td/>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {hasMoreDeliveries && deliveryCursor !== null && (
+            <button type="button" disabled={pending} onClick={() => void loadMoreDeliveries()}>
+              {pending ? 'Loading…' : 'Load more deliveries'}
+            </button>
+          )}
+        </>
       ) : (
         <p>No webhook deliveries recorded.</p>
       )}

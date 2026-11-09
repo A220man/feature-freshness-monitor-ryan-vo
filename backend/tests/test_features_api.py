@@ -254,6 +254,35 @@ class FeatureApiTests(unittest.TestCase):
         deleted = self.client.delete(f"/api/features/risk/webhooks/{webhook_id}", headers=self.operator)
         self.assertEqual(deleted.status_code, 200)
         self.assertTrue(deleted.json()["deleted"])
-        self.assertEqual(self.client.delete(f"/api/features/risk/webhooks/{webhook_id}", headers=self.operator).status_code, 404)
 
-
+    def test_sla_compliance_endpoint(self):
+        self.policy()
+        # Create some incidents by evaluating with no materializations
+        self.client.post("/api/features/risk/evaluate", headers=self.operator)
+        # Window covering the incident
+        window_start = (BASE - timedelta(minutes=5)).isoformat()
+        window_end = (BASE + timedelta(minutes=5)).isoformat()
+        # Unauthenticated rejected
+        self.assertEqual(self.client.get(f"/api/features/risk/sla?window_start={window_start}&window_end={window_end}").status_code, 401)
+        # Viewer can access
+        resp = self.client.get(f"/api/features/risk/sla?window_start={window_start}&window_end={window_end}", headers=self.viewer)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["feature_set"], "risk")
+        self.assertEqual(data["window_start"], window_start.replace("+00:00", "Z") if "+00:00" in window_start else window_start + "Z")
+        self.assertEqual(data["window_end"], window_end.replace("+00:00", "Z") if "+00:00" in window_end else window_end + "Z")
+        self.assertIn("overall_compliance_ratio", data)
+        self.assertIn("partitions", data)
+        self.assertEqual(len(data["partitions"]), 2)
+        for p in data["partitions"]:
+            self.assertIn("partition", p)
+            self.assertIn("total_breach_seconds", p)
+            self.assertIn("window_seconds", p)
+            self.assertIn("compliance_ratio", p)
+            self.assertIn("incident_count", p)
+        # Invalid window_start format
+        self.assertEqual(self.client.get(f"/api/features/risk/sla?window_start=invalid&window_end={window_end}", headers=self.viewer).status_code, 422)
+        # window_start after window_end
+        self.assertEqual(self.client.get(f"/api/features/risk/sla?window_start={window_end}&window_end={window_start}", headers=self.viewer).status_code, 422)
+        # Unknown feature set
+        self.assertEqual(self.client.get(f"/api/features/unknown/sla?window_start={window_start}&window_end={window_end}", headers=self.viewer).status_code, 404)

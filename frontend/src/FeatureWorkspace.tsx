@@ -5,7 +5,7 @@ import { MaterializationForm } from './MaterializationForm'
 import { BatchImportForm } from './BatchImportForm'
 import { AdvisoryPanel } from './AdvisoryPanel'
 import { WebhookPanel } from './WebhookPanel'
-
+import { SlaPanel } from './SlaPanel'
 export function FeatureWorkspace({api, principal}: {api: FeatureApi; principal: Principal}) {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [selected, setSelected] = useState('')

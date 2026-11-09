@@ -15,7 +15,8 @@ export interface WebhookInput { target_url: string; events: ('opened' | 'resolve
 export interface WebhookSubscription { webhook_id: string; feature_set: string; target_url: string; events: ('opened' | 'resolved')[]; created_at: string }
 export interface WebhookDelivery { delivery_id: number; webhook_id: string; feature_set: string; incident_id: string; partition: string; condition: 'missing' | 'stale'; action: 'opened' | 'resolved'; target_url: string; signature: string; status: 'delivered' | 'failed'; status_code: number | null; detail: string; occurred_at: string }
 export interface FeatureExport { feature_set: string; exported_at: string; policy: Policy; health: Evaluation; incidents: Incident[] }
-
+export interface SlaCompliancePartition { partition: string; total_breach_seconds: number; window_seconds: number; compliance_ratio: number; incident_count: number }
+export interface SlaReport { feature_set: string; window_start: string; window_end: string; overall_compliance_ratio: number; partitions: SlaCompliancePartition[] }
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) { super(message); this.name = 'ApiError'; this.status = status }
@@ -95,7 +96,7 @@ export class FeatureApi {
   timeline(feature: string, after = 0, limit = 100): Promise<Page<TimelineEvent>> {
     return this.request(`/features/${encodeURIComponent(feature)}/timeline?after=${after}&limit=${limit}`)
   }
-  audit(feature: string, after = 0, limit = 100): Promise<Page<AuditEvent>> {
-    return this.request(`/features/${encodeURIComponent(feature)}/audit?after=${after}&limit=${limit}`)
+  slaCompliance(feature: string, windowStart: string, windowEnd: string): Promise<SlaReport> {
+    return this.request(`/features/${encodeURIComponent(feature)}/sla?window_start=${encodeURIComponent(windowStart)}&window_end=${encodeURIComponent(windowEnd)}`)
   }
 }
