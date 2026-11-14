@@ -205,7 +205,7 @@ def reconcile_incidents(evaluation: FreshnessEvaluation, incidents: Iterable[Inc
             incident_id = sha256(key.encode()).hexdigest()[:24]
             records.append(Incident(incident_id, evaluation.feature_set, health.partition, condition, at, at))
             transitions.append(IncidentTransition(incident_id, "opened", at, evaluation.feature_set, health.partition, condition))
-
+    return tuple(records), tuple(transitions)
 
 @dataclass(frozen=True)
 class SlaCompliance:
