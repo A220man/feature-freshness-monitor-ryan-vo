@@ -189,7 +189,7 @@
     {
       "id": "sla-compliance-analytics",
       "title": "Partition SLA Compliance & Breach Duration Analytics",
-      "status": "in_progress",
+      "status": "done",
       "acceptance": [
         "Compute per-partition incident breach durations and SLA compliance ratios across evaluation windows"
       ],

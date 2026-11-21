@@ -261,7 +261,7 @@ def compute_sla_compliance(
     """
     ws = utc(window_start)
     we = utc(window_end)
-    if ws >= we:
+    if ws > we:
         raise ValueError("window_start must be before window_end")
 
     window_seconds = (we - ws).total_seconds()
