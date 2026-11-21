@@ -123,7 +123,7 @@ Tests: `backend/tests/test_freshness_store.py`, `backend/tests/test_features_api
 
 ### sla-compliance-analytics — Partition SLA Compliance & Breach Duration Analytics
 
-Status: in_progress
+Status: done
 
 Acceptance:
 - Compute per-partition incident breach durations and SLA compliance ratios across evaluation windows
