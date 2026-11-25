@@ -218,7 +218,7 @@ def create_router(
     @router.get("/features/{feature_set}/audit")
     def audit(feature_set: str, after: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=1000), principal: Principal = Depends(authenticate)):
         require_role(principal, {"admin"})
-        rows = store.audit(feature_set, after, limit)
+        return {"events": store.audit(feature_set, after, limit)}
     @router.get("/features/{feature_set}/sla")
     def sla_compliance(
         feature_set: str,

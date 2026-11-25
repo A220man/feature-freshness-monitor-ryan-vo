@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: feature-freshness-monitor-ryan-vo
+Version: 1.10.0
+Summary: Source-watermark freshness monitoring for ML feature pipelines
+Author-email: Ryan Vo <ryandtvo@gmail.com>
+License-Expression: MIT
+Requires-Python: >=3.12
+License-File: LICENSE
+Dynamic: license-file
