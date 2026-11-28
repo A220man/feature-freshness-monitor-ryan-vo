@@ -1,8 +1,13 @@
 # Changelog
 
-## 1.11.0 — work-in-progress checkpoint
+## 1.12.0 — work-in-progress checkpoint
 
 Partial code published for continued development. Known issues: STATUS.md.
+
+## 1.11.0 — work-in-progress checkpoint
+
+Partial code published for continued development. Known issues:
+- SSRF validation gap in `validate_webhook_url`: domain hostnames bypassed the IP global address check because `ipaddress.ip_address()` raises ValueError on hostnames, and the error was silently swallowed. [FIXED]
 
 ## 1.10.0 — work-in-progress checkpoint
 
