@@ -54,6 +54,13 @@ def validate_webhook_url(target_url: str) -> str:
     except ValueError as err:
         if "non-global" in str(err):
             raise
+        # ipaddress.ip_address failed (e.g., hostname); try to resolve it
+        try:
+            resolved = socket.gethostbyname(host)
+            _check_ip_global(resolved)
+        except (ValueError, socket.gaierror):
+            # Can't resolve - allow it; runtime sender will check
+            pass
     return cleaned
 
 
